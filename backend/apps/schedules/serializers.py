@@ -1,6 +1,8 @@
 from rest_framework import serializers
 from .models import SchedulePeriod
+from apps.shifts.models import ShiftRequest
 from apps.users.serializers import UserSerializer
+from datetime import datetime, timedelta
 
 
 class SchedulePeriodSerializer(serializers.ModelSerializer):
@@ -40,7 +42,7 @@ class SchedulePeriodDetailSerializer(SchedulePeriodSerializer):
         fields = SchedulePeriodSerializer.Meta.fields + ['shifts', 'coverage_summary']
     
     def get_shifts(self, obj):
-        """Return all shifts (we'll import ShiftSerializer later)"""
+        """Return all shifts"""
         from apps.shifts.serializers import ShiftRequestSerializer
         shifts = obj.shiftrequest_set.all().order_by('date', 'start_time')
         return ShiftRequestSerializer(shifts, many=True).data
@@ -71,3 +73,44 @@ class SchedulePeriodCreateUpdateSerializer(serializers.ModelSerializer):
                     'end_date': 'End date must be after start date.'
                 })
         return data
+
+
+class CalendarShiftSerializer(serializers.ModelSerializer):
+    """Simplified shift serializer for calendar views"""
+    pa_name = serializers.CharField(source='requested_by.get_full_name', read_only=True)
+    pa_id = serializers.IntegerField(source='requested_by.id', read_only=True)
+    
+    class Meta:
+        model = ShiftRequest
+        fields = [
+            'id', 'pa_id', 'pa_name', 'date', 
+            'start_time', 'end_time', 'duration_hours',
+            'notes', 'status'
+        ]
+
+
+class DayScheduleSerializer(serializers.Serializer):
+    """Serializer for a single day's schedule"""
+    date = serializers.DateField()
+    day_name = serializers.CharField()
+    shifts = CalendarShiftSerializer(many=True)
+    coverage = serializers.DictField()
+    total_hours = serializers.DecimalField(max_digits=5, decimal_places=2)
+
+
+class WeekScheduleSerializer(serializers.Serializer):
+    """Serializer for a week's schedule"""
+    week_start = serializers.DateField()
+    week_end = serializers.DateField()
+    week_number = serializers.IntegerField()
+    days = DayScheduleSerializer(many=True)
+
+
+class MonthScheduleSerializer(serializers.Serializer):
+    """Serializer for a month's schedule"""
+    year = serializers.IntegerField()
+    month = serializers.IntegerField()
+    month_name = serializers.CharField()
+    weeks = WeekScheduleSerializer(many=True)
+    total_shifts = serializers.IntegerField()
+    coverage_stats = serializers.DictField()
