@@ -1,8 +1,6 @@
-from django.urls import path
+from django.urls import re_path
+from . import consumers
 
-# Placeholder for WebSocket URL patterns
-# We'll build this out in Phase 5 (WebSockets)
 websocket_urlpatterns = [
-    # path('ws/schedule/<int:period_id>/', ScheduleConsumer.as_asgi()),
+    re_path(r'ws/schedule/(?P<period_id>\d+)/$', consumers.ScheduleConsumer.as_asgi()),
 ]
-    
