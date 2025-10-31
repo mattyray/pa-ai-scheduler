@@ -1,0 +1,26 @@
+✅ SHIFT REQUEST APPROVED
+
+Hi {{ pa_name }},
+
+Great news! Your shift request has been approved by {{ admin_name }}.
+
+SHIFT DETAILS
+-------------
+Date: {{ shift_date }}
+Time: {{ start_time }} - {{ end_time }}
+Duration: {{ duration }} hours
+Schedule Period: {{ period_name }}
+{% if admin_notes %}
+Admin Notes: {{ admin_notes }}
+{% endif %}
+
+This shift is now part of your schedule. You can view your complete schedule at:
+{{ frontend_url }}/schedule
+
+If you have any questions, please contact your administrator.
+
+Thank you,
+PA Scheduling System
+
+---
+This is an automated message. Please do not reply to this email.

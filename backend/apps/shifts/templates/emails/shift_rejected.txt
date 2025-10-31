@@ -1,0 +1,27 @@
+ SHIFT REQUEST NOT APPROVED
+
+Hi {{ pa_name }},
+
+Your shift request was not approved. Please see the details below.
+
+SHIFT DETAILS
+-------------
+Date: {{ shift_date }}
+Time: {{ start_time }} - {{ end_time }}
+Duration: {{ duration }} hours
+Schedule Period: {{ period_name }}
+
+REASON FOR REJECTION
+--------------------
+{{ rejected_reason }}
+
+If you have questions about this decision or would like to request a different shift, please contact your administrator or submit a new request at:
+{{ frontend_url }}/requests/new
+
+Thank you for your understanding.
+
+Best regards,
+PA Scheduling System
+
+---
+This is an automated message. Please do not reply to this email.

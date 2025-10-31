@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: #ef4444;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            border-radius: 5px 5px 0 0;
+        }
+        .content {
+            background-color: #f9fafb;
+            padding: 30px;
+            border: 1px solid #e5e7eb;
+        }
+        .shift-details {
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+            border-left: 4px solid #ef4444;
+        }
+        .reason-box {
+            background-color: #fef2f2;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            border-left: 3px solid #ef4444;
+        }
+        .detail-row {
+            margin: 10px 0;
+        }
+        .label {
+            font-weight: bold;
+            color: #6b7280;
+        }
+        .value {
+            color: #111827;
+        }
+        .button {
+            display: inline-block;
+            background-color: #3b82f6;
+            color: white;
+            padding: 12px 30px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .footer {
+            text-align: center;
+            color: #6b7280;
+            font-size: 12px;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e5e7eb;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>❌ Shift Request Not Approved</h1>
+    </div>
+    
+    <div class="content">
+        <p>Hi {{ pa_name }},</p>
+        
+        <p>Your shift request was not approved. Please see the details below.</p>
+        
+        <div class="shift-details">
+            <h3>Shift Details</h3>
+            <div class="detail-row">
+                <span class="label">Date:</span>
+                <span class="value">{{ shift_date }}</span>
+            </div>
+            <div class="detail-row">
+                <span class="label">Time:</span>
+                <span class="value">{{ start_time }} - {{ end_time }}</span>
+            </div>
+            <div class="detail-row">
+                <span class="label">Duration:</span>
+                <span class="value">{{ duration }} hours</span>
+            </div>
+            <div class="detail-row">
+                <span class="label">Schedule Period:</span>
+                <span class="value">{{ period_name }}</span>
+            </div>
+        </div>
+        
+        <div class="reason-box">
+            <strong>Reason for rejection:</strong>
+            <p>{{ rejected_reason }}</p>
+        </div>
+        
+        <p>If you have questions about this decision or would like to request a different shift, please contact your administrator or submit a new request.</p>
+        
+        <center>
+            <a href="{{ frontend_url }}/requests/new" class="button">Submit New Request</a>
+        </center>
+        
+        <p>Thank you for your understanding.</p>
+        
+        <p>Best regards,<br>PA Scheduling System</p>
+    </div>
+    
+    <div class="footer">
+        <p>This is an automated message. Please do not reply to this email.</p>
+    </div>
+</body>
+</html>

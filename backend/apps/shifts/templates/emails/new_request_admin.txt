@@ -1,0 +1,27 @@
+```
+🔔 NEW SHIFT REQUEST
+
+Hi Admin,
+
+{{ pa_name }} has submitted a new shift request that requires your review.
+
+SHIFT REQUEST DETAILS
+---------------------
+PA: {{ pa_name }} ({{ pa_email }})
+Date: {{ shift_date }}
+Time: {{ start_time }} - {{ end_time }}
+Duration: {{ duration }} hours
+Schedule Period: {{ period_name }}
+{% if pa_notes %}
+PA Notes: {{ pa_notes }}
+{% endif %}
+Submitted: {{ submitted_at }}
+
+Please review and approve or reject this request at your earliest convenience:
+{{ frontend_url }}/admin/approve
+
+Best regards,
+PA Scheduling System
+
+---
+This is an automated message. Please do not reply to this email.
