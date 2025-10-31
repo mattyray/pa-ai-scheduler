@@ -89,11 +89,10 @@ class ShiftRequestViewSet(viewsets.ModelViewSet):
         return queryset
     
     def get_serializer_class(self):
-        """Use simplified serializer for PA creation"""
-        if self.action == 'create' and self.request.user.role == 'PA':
+        """Use simplified serializer for creation"""
+        if self.action == 'create':
             return ShiftRequestCreateSerializer
         return ShiftRequestSerializer
-    
     def get_permissions(self):
         """Set permissions based on action"""
         if self.action in ['approve', 'reject']:
