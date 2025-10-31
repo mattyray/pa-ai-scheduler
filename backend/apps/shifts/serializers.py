@@ -24,26 +24,38 @@ class ShiftRequestSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'id', 'duration_hours', 'status', 'approved_at', 
-            'approved_by', 'created_at', 'updated_at'
+            'approved_by', 'created_at', 'updated_at', 'requested_by'
         ]
+
+
+class ShiftRequestCreateSerializer(serializers.ModelSerializer):
+    """Simplified serializer for creating shift requests"""
+    
+    class Meta:
+        model = ShiftRequest
+        fields = ['schedule_period', 'date', 'start_time', 'end_time', 'notes']
     
     def validate_schedule_period(self, value):
-        """Ensure period is OPEN for new requests"""
-        if self.instance is None:  # Only on creation
-            if value.status != 'OPEN':
-                raise serializers.ValidationError(
-                    f'Cannot submit requests for {value.status} periods. Period must be OPEN.'
-                )
+        """Ensure period is OPEN"""
+        if value.status != 'OPEN':
+            raise serializers.ValidationError(
+                f'Cannot submit requests for {value.status} periods. Period must be OPEN.'
+            )
         return value
     
     def validate(self, data):
         """Validate shift request rules"""
-        # Get schedule period
-        schedule_period = data.get('schedule_period', getattr(self.instance, 'schedule_period', None))
-        date = data.get('date', getattr(self.instance, 'date', None))
-        start_time = data.get('start_time', getattr(self.instance, 'start_time', None))
-        end_time = data.get('end_time', getattr(self.instance, 'end_time', None))
-        requested_by = data.get('requested_by', getattr(self.instance, 'requested_by', None))
+        schedule_period = data.get('schedule_period')
+        date = data.get('date')
+        start_time = data.get('start_time')
+        end_time = data.get('end_time')
+        
+        # Get requested_by from context (set by view)
+        request = self.context.get('request')
+        if not request or not request.user:
+            raise serializers.ValidationError('User context required')
+        
+        requested_by = request.user
         
         # Validate start_time < end_time
         if start_time and end_time:
@@ -60,22 +72,21 @@ class ShiftRequestSerializer(serializers.ModelSerializer):
                 })
         
         # Check for overlapping shifts (same PA, same time)
-        if date and start_time and end_time and requested_by:
+        if date and start_time and end_time:
             overlapping = ShiftRequest.objects.filter(
                 requested_by=requested_by,
                 date=date,
                 status__in=['PENDING', 'APPROVED']
-            ).exclude(pk=self.instance.pk if self.instance else None)
+            )
             
             for shift in overlapping:
-                # Check for time overlap
                 if not (end_time <= shift.start_time or start_time >= shift.end_time):
                     raise serializers.ValidationError({
                         'time': f'You already have a shift from {shift.start_time} to {shift.end_time} on this date.'
                     })
         
         # Check for duplicate pending requests
-        if self.instance is None and date and start_time and end_time and requested_by:
+        if date and start_time and end_time:
             duplicate = ShiftRequest.objects.filter(
                 requested_by=requested_by,
                 date=date,
@@ -89,35 +100,6 @@ class ShiftRequestSerializer(serializers.ModelSerializer):
                     'You already have a pending request for this exact shift.'
                 )
         
-        return data
-    
-    def create(self, validated_data):
-        """Create shift request with auto-calculated duration"""
-        # Set requested_by to current user if not provided
-        if 'requested_by' not in validated_data:
-            validated_data['requested_by'] = self.context['request'].user
-        
-        return super().create(validated_data)
-
-
-class ShiftRequestCreateSerializer(serializers.ModelSerializer):
-    """Simplified serializer for PAs creating requests"""
-    class Meta:
-        model = ShiftRequest
-        fields = ['schedule_period', 'date', 'start_time', 'end_time', 'notes']
-    
-    def validate_schedule_period(self, value):
-        """Ensure period is OPEN"""
-        if value.status != 'OPEN':
-            raise serializers.ValidationError(
-                f'Cannot submit requests for {value.status} periods.'
-            )
-        return value
-    
-    def validate(self, data):
-        """Run same validations as main serializer"""
-        serializer = ShiftRequestSerializer(data=data, context=self.context)
-        serializer.is_valid(raise_exception=True)
         return data
 
 
