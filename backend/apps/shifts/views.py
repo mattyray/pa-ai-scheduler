@@ -10,6 +10,11 @@ from .serializers import (
     ShiftApprovalSerializer,
     ShiftRejectionSerializer
 )
+from .tasks import (
+    send_shift_approved_email,
+    send_shift_rejected_email,
+    send_admin_notification_new_request
+)
 
 
 class IsAdminUser(permissions.BasePermission):
@@ -44,6 +49,8 @@ class ShiftRequestViewSet(viewsets.ModelViewSet):
     Delete: DELETE /api/shifts/{id}/ (cancel own pending requests)
     Approve: POST /api/shifts/{id}/approve/ (admin only)
     Reject: POST /api/shifts/{id}/reject/ (admin only)
+    Pending: GET /api/shifts/pending/ (admin only)
+    My Schedule: GET /api/shifts/my-schedule/ (PA only)
     """
     queryset = ShiftRequest.objects.all().select_related(
         'schedule_period', 'requested_by', 'approved_by'
@@ -95,24 +102,26 @@ class ShiftRequestViewSet(viewsets.ModelViewSet):
         return [permissions.IsAuthenticated()]
     
     def perform_create(self, serializer):
-        """Set requested_by to current user"""
+        """Set requested_by to current user and send notifications"""
         user = self.request.user
         
         # Admin can create direct approved shifts
         if user.role == 'ADMIN':
             admin_direct = self.request.data.get('admin_direct', False)
             if admin_direct:
-                serializer.save(
+                shift = serializer.save(
                     status='APPROVED',
                     approved_by=user,
                     approved_at=timezone.now()
                 )
-                # TODO: Trigger coverage updates
+                # TODO: Trigger coverage updates (Phase 6)
                 return
         
         # Regular PA request
-        serializer.save(requested_by=user, status='PENDING')
-        # TODO: Send notification email to admin (Task 3.6)
+        shift = serializer.save(requested_by=user, status='PENDING')
+        
+        # Queue email notification to admin
+        send_admin_notification_new_request.delay(shift.id)
     
     def update(self, request, *args, **kwargs):
         """Only allow updating pending requests"""
@@ -218,8 +227,8 @@ class ShiftRequestViewSet(viewsets.ModelViewSet):
                              f'already has a shift from {other_shift.start_time} to {other_shift.end_time}'
                 }, status=status.HTTP_400_BAD_REQUEST)
         
-        # TODO: Check weekly hours and show warning (Task 3.5)
-        # TODO: Update coverage models (Task 3.5)
+        # TODO: Check weekly hours and show warning (Phase 6)
+        # TODO: Update coverage models (Phase 6)
         
         # Approve the shift
         shift.status = 'APPROVED'
@@ -229,7 +238,9 @@ class ShiftRequestViewSet(viewsets.ModelViewSet):
             shift.admin_notes = serializer.validated_data['admin_notes']
         shift.save()
         
-        # TODO: Send approval email (Task 3.6)
+        # Queue approval email
+        send_shift_approved_email.delay(shift.id)
+        
         # TODO: Trigger WebSocket event (Phase 5)
         
         return Response({
@@ -256,7 +267,9 @@ class ShiftRequestViewSet(viewsets.ModelViewSet):
         shift.rejected_reason = serializer.validated_data['rejected_reason']
         shift.save()
         
-        # TODO: Send rejection email (Task 3.6)
+        # Queue rejection email
+        send_shift_rejected_email.delay(shift.id)
+        
         # TODO: Trigger WebSocket event (Phase 5)
         
         return Response({
