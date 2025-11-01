@@ -20,3 +20,4 @@ urlpatterns = [
     path('calendar/week/<int:year>/<int:week>/', WeekViewAPI.as_view(), name='week-view'),
     path('calendar/day/<str:date>/', DayViewAPI.as_view(), name='day-view'),
 ]
+
