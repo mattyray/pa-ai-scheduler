@@ -1,0 +1,18 @@
+✉️ VERIFY YOUR EMAIL
+
+Hi {{ user_name }},
+
+Welcome to PA Scheduling System! Please verify your email address to complete your registration.
+
+Verification Link:
+{{ verification_url }}
+
+This link will expire in 7 days.
+
+If you didn't create an account, you can safely ignore this email.
+
+Best regards,
+PA Scheduling System
+
+---
+This is an automated message. Please do not reply to this email.
