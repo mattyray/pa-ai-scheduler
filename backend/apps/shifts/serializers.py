@@ -57,16 +57,27 @@ class ShiftRequestCreateSerializer(serializers.ModelSerializer):
         
         requested_by = request.user
         
-        # REMOVED: Don't validate start_time < end_time here!
-        # The model handles overnight shifts correctly by adding 24 hours
-        # So we allow end_time to be "earlier" than start_time for overnight shifts
-        
         # Validate date within period
         if schedule_period and date:
             if not (schedule_period.start_date <= date <= schedule_period.end_date):
                 raise serializers.ValidationError({
                     'date': f'Date must be between {schedule_period.start_date} and {schedule_period.end_date}'
                 })
+        
+        # NEW: Check for conflicts with OTHER PAs' APPROVED shifts
+        if date and start_time and end_time:
+            conflicting_shifts = ShiftRequest.objects.filter(
+                date=date,
+                status='APPROVED'
+            ).exclude(requested_by=requested_by)
+            
+            for shift in conflicting_shifts:
+                # Check if times overlap
+                # Two shifts overlap if: NOT (end1 <= start2 OR start1 >= end2)
+                if not (end_time <= shift.start_time or start_time >= shift.end_time):
+                    raise serializers.ValidationError({
+                        'time': f'This time slot is already taken. {shift.requested_by.get_full_name()} has an approved shift from {shift.start_time.strftime("%I:%M %p")} to {shift.end_time.strftime("%I:%M %p")} on this date.'
+                    })
         
         # Check for overlapping shifts (same PA, same time)
         if date and start_time and end_time:
@@ -78,10 +89,9 @@ class ShiftRequestCreateSerializer(serializers.ModelSerializer):
             
             for shift in overlapping:
                 # Check if times overlap
-                # For overnight shifts, we need to be more careful
                 if not (end_time <= shift.start_time or start_time >= shift.end_time):
                     raise serializers.ValidationError({
-                        'time': f'You already have a shift from {shift.start_time} to {shift.end_time} on this date.'
+                        'time': f'You already have a shift from {shift.start_time.strftime("%I:%M %p")} to {shift.end_time.strftime("%I:%M %p")} on this date.'
                     })
         
         # Check for duplicate pending requests
