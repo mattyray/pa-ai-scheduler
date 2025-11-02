@@ -1,0 +1,16 @@
+Suggestion Declined
+
+Hi {{ admin_name }},
+
+{{ pa_name }} has declined your shift suggestion:
+
+Date: {{ date }}
+Time: {{ start_time }} - {{ end_time }}
+{% if reason %}
+Reason: {{ reason }}
+{% endif %}
+
+You can suggest this shift to another PA if needed.
+
+---
+This is an automated message from the PA Scheduling System.

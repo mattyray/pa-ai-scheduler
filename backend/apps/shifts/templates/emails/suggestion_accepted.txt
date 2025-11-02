@@ -1,0 +1,15 @@
+Suggestion Accepted
+
+Hi {{ admin_name }},
+
+{{ pa_name }} has accepted your shift suggestion:
+
+Date: {{ date }}
+Time: {{ start_time }} - {{ end_time }}
+
+A shift request has been automatically created and is pending your approval.
+
+Review the request here: {{ requests_url }}
+
+---
+This is an automated message from the PA Scheduling System.

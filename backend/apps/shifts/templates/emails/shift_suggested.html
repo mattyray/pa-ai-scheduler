@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Shift Suggestion</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+    <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #2563eb;">Shift Suggestion from {{ admin_name }}</h2>
+        
+        <p>Hi {{ pa_name }},</p>
+        
+        <p>{{ admin_name }} has suggested you work a shift:</p>
+        
+        <div style="background-color: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <p style="margin: 5px 0;"><strong>📅 Date:</strong> {{ date }}</p>
+            <p style="margin: 5px 0;"><strong>🕐 Time:</strong> {{ start_time }} - {{ end_time }} ({{ duration }} hours)</p>
+            {% if message %}
+            <p style="margin: 5px 0;"><strong>💬 Message:</strong> {{ message }}</p>
+            {% endif %}
+        </div>
+        
+        <p>You can accept or decline this suggestion from your dashboard.</p>
+        
+        <div style="margin: 30px 0;">
+            <a href="{{ dashboard_url }}" style="display: inline-block; padding: 12px 24px; background-color: #2563eb; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">View Suggestion</a>
+        </div>
+        
+        <p style="color: #6b7280; font-size: 14px;">Note: If you accept, a shift request will be created and must still be approved by the admin.</p>
+        
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
+        
+        <p style="color: #6b7280; font-size: 12px;">
+            This is an automated message from the PA Scheduling System.
+        </p>
+    </div>
+</body>
+</html>

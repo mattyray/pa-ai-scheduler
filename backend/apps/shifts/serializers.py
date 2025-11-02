@@ -1,13 +1,12 @@
 from rest_framework import serializers
 from django.utils import timezone
 from datetime import datetime, timedelta
-from .models import ShiftRequest
+from .models import ShiftRequest, ShiftSuggestion
 from apps.schedules.models import SchedulePeriod
 from apps.users.serializers import UserSerializer
 
 
 class ShiftRequestSerializer(serializers.ModelSerializer):
-    """Main serializer for shift requests"""
     requested_by_name = serializers.CharField(source='requested_by.get_full_name', read_only=True)
     approved_by_name = serializers.CharField(source='approved_by.get_full_name', read_only=True)
     schedule_period_name = serializers.CharField(source='schedule_period.name', read_only=True)
@@ -29,14 +28,12 @@ class ShiftRequestSerializer(serializers.ModelSerializer):
 
 
 class ShiftRequestCreateSerializer(serializers.ModelSerializer):
-    """Simplified serializer for creating shift requests"""
     
     class Meta:
         model = ShiftRequest
         fields = ['schedule_period', 'date', 'start_time', 'end_time', 'notes']
     
     def validate_schedule_period(self, value):
-        """Ensure period is OPEN"""
         if value.status != 'OPEN':
             raise serializers.ValidationError(
                 f'Cannot submit requests for {value.status} periods. Period must be OPEN.'
@@ -44,80 +41,99 @@ class ShiftRequestCreateSerializer(serializers.ModelSerializer):
         return value
     
     def validate(self, data):
-        """Validate shift request rules"""
         schedule_period = data.get('schedule_period')
         date = data.get('date')
         start_time = data.get('start_time')
         end_time = data.get('end_time')
         
-        # Get requested_by from context (set by view)
         request = self.context.get('request')
         if not request or not request.user:
             raise serializers.ValidationError('User context required')
         
         requested_by = request.user
         
-        # Validate date within period
         if schedule_period and date:
             if not (schedule_period.start_date <= date <= schedule_period.end_date):
-                raise serializers.ValidationError({
-                    'date': f'Date must be between {schedule_period.start_date} and {schedule_period.end_date}'
-                })
+                raise serializers.ValidationError(
+                    f'Date must be within period range: {schedule_period.start_date} to {schedule_period.end_date}'
+                )
         
-        # NEW: Check for conflicts with OTHER PAs' APPROVED shifts
-        if date and start_time and end_time:
-            conflicting_shifts = ShiftRequest.objects.filter(
-                date=date,
-                status='APPROVED'
-            ).exclude(requested_by=requested_by)
-            
-            for shift in conflicting_shifts:
-                # Check if times overlap
-                # Two shifts overlap if: NOT (end1 <= start2 OR start1 >= end2)
-                if not (end_time <= shift.start_time or start_time >= shift.end_time):
-                    raise serializers.ValidationError({
-                        'time': f'This time slot is already taken. {shift.requested_by.get_full_name()} has an approved shift from {shift.start_time.strftime("%I:%M %p")} to {shift.end_time.strftime("%I:%M %p")} on this date.'
-                    })
+        if date and date < timezone.now().date():
+            raise serializers.ValidationError('Cannot request shifts for past dates')
         
-        # Check for overlapping shifts (same PA, same time)
-        if date and start_time and end_time:
-            overlapping = ShiftRequest.objects.filter(
-                requested_by=requested_by,
-                date=date,
-                status__in=['PENDING', 'APPROVED']
-            )
-            
-            for shift in overlapping:
-                # Check if times overlap
-                if not (end_time <= shift.start_time or start_time >= shift.end_time):
-                    raise serializers.ValidationError({
-                        'time': f'You already have a shift from {shift.start_time.strftime("%I:%M %p")} to {shift.end_time.strftime("%I:%M %p")} on this date.'
-                    })
-        
-        # Check for duplicate pending requests
-        if date and start_time and end_time:
-            duplicate = ShiftRequest.objects.filter(
-                requested_by=requested_by,
+        if schedule_period and date and start_time and end_time:
+            from apps.schedules.utils import check_shift_conflicts
+            conflicts = check_shift_conflicts(
+                schedule_period=schedule_period,
                 date=date,
                 start_time=start_time,
                 end_time=end_time,
-                status='PENDING'
-            ).exists()
-            
-            if duplicate:
+                exclude_request_id=None
+            )
+            if conflicts:
                 raise serializers.ValidationError(
-                    'You already have a pending request for this exact shift.'
+                    'This shift conflicts with existing approved shifts'
                 )
         
         return data
 
 
-class ShiftApprovalSerializer(serializers.Serializer):
-    """Serializer for approving shifts"""
-    admin_notes = serializers.CharField(required=False, allow_blank=True)
-    override_overtime = serializers.BooleanField(default=False, required=False)
+class ShiftSuggestionSerializer(serializers.ModelSerializer):
+    suggested_by_name = serializers.CharField(source='suggested_by.get_full_name', read_only=True)
+    suggested_to_name = serializers.CharField(source='suggested_to.get_full_name', read_only=True)
+    schedule_period_name = serializers.CharField(source='schedule_period.name', read_only=True)
+    
+    class Meta:
+        model = ShiftSuggestion
+        fields = [
+            'id', 'suggested_by', 'suggested_by_name',
+            'suggested_to', 'suggested_to_name',
+            'schedule_period', 'schedule_period_name',
+            'date', 'start_time', 'end_time', 'duration_hours',
+            'message', 'decline_reason', 'status',
+            'related_shift_request', 'created_at', 'responded_at'
+        ]
+        read_only_fields = [
+            'id', 'suggested_by', 'duration_hours', 'status',
+            'related_shift_request', 'created_at', 'responded_at'
+        ]
 
 
-class ShiftRejectionSerializer(serializers.Serializer):
-    """Serializer for rejecting shifts"""
-    rejected_reason = serializers.CharField(required=True)
+class ShiftSuggestionCreateSerializer(serializers.ModelSerializer):
+    
+    class Meta:
+        model = ShiftSuggestion
+        fields = ['suggested_to', 'schedule_period', 'date', 'start_time', 'end_time', 'message']
+    
+    def validate_schedule_period(self, value):
+        if value.status not in ['OPEN', 'LOCKED']:
+            raise serializers.ValidationError('Period must be OPEN or LOCKED')
+        return value
+    
+    def validate_suggested_to(self, value):
+        if value.role != 'PA':
+            raise serializers.ValidationError('Can only suggest shifts to PAs')
+        return value
+    
+    def validate(self, data):
+        date = data.get('date')
+        schedule_period = data.get('schedule_period')
+        
+        if schedule_period and date:
+            if not (schedule_period.start_date <= date <= schedule_period.end_date):
+                raise serializers.ValidationError(
+                    f'Date must be within period range'
+                )
+        
+        if date and date < timezone.now().date():
+            raise serializers.ValidationError('Cannot suggest shifts for past dates')
+        
+        return data
+
+
+class ShiftSuggestionAcceptSerializer(serializers.Serializer):
+    pass
+
+
+class ShiftSuggestionDeclineSerializer(serializers.Serializer):
+    decline_reason = serializers.CharField(required=False, allow_blank=True)

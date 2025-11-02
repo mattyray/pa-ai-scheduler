@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Suggestion Accepted</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+    <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #10b981;">✅ Suggestion Accepted</h2>
+        
+        <p>Hi {{ admin_name }},</p>
+        
+        <p><strong>{{ pa_name }}</strong> has accepted your shift suggestion:</p>
+        
+        <div style="background-color: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <p style="margin: 5px 0;"><strong>📅 Date:</strong> {{ date }}</p>
+            <p style="margin: 5px 0;"><strong>🕐 Time:</strong> {{ start_time }} - {{ end_time }}</p>
+        </div>
+        
+        <p>A shift request has been automatically created and is pending your approval.</p>
+        
+        <div style="margin: 30px 0;">
+            <a href="{{ requests_url }}" style="display: inline-block; padding: 12px 24px; background-color: #10b981; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">Review Request</a>
+        </div>
+        
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
+        
+        <p style="color: #6b7280; font-size: 12px;">
+            This is an automated message from the PA Scheduling System.
+        </p>
+    </div>
+</body>
+</html>

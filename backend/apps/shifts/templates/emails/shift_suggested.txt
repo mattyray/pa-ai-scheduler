@@ -1,0 +1,17 @@
+Shift Suggestion from {{ admin_name }}
+
+Hi {{ pa_name }},
+
+{{ admin_name }} has suggested you work a shift:
+
+Date: {{ date }}
+Time: {{ start_time }} - {{ end_time }} ({{ duration }} hours)
+{% if message %}Message: {{ message }}{% endif %}
+
+You can accept or decline this suggestion from your dashboard:
+{{ dashboard_url }}
+
+Note: If you accept, a shift request will be created and must still be approved by the admin.
+
+---
+This is an automated message from the PA Scheduling System.
