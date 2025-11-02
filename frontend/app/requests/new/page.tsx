@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { schedulesAPI, SchedulePeriod } from '@/lib/schedules-api';
@@ -22,6 +22,10 @@ export default function NewShiftRequestPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
 
+  const dateRef = useRef<HTMLInputElement>(null);
+  const startTimeRef = useRef<HTMLInputElement>(null);
+  const endTimeRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     if (!authLoading && !isPA) {
       router.push('/login');
@@ -39,14 +43,12 @@ export default function NewShiftRequestPage() {
       const response = await schedulesAPI.listPeriods();
       const periodsData = response.data.results || response.data;
       
-      // Only show OPEN periods
       const openPeriods = Array.isArray(periodsData) 
         ? periodsData.filter((p: SchedulePeriod) => p.status === 'OPEN')
         : [];
       
       setPeriods(openPeriods);
       
-      // Auto-select first open period
       if (openPeriods.length > 0) {
         setFormData(prev => ({ ...prev, schedule_period: openPeriods[0].id.toString() }));
       }
@@ -70,8 +72,6 @@ export default function NewShiftRequestPage() {
       });
 
       setSuccess(true);
-      
-      // Redirect after 2 seconds
       setTimeout(() => {
         router.push('/requests');
       }, 2000);
@@ -237,7 +237,7 @@ export default function NewShiftRequestPage() {
                       required
                       value={formData.schedule_period}
                       onChange={(e) => setFormData({ ...formData, schedule_period: e.target.value })}
-                      className="block w-full border-2 border-gray-300 rounded-lg shadow-sm py-3 px-4 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base"
+                      className="block w-full border-2 border-gray-300 rounded-lg shadow-sm py-3 px-4 text-gray-900 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base cursor-pointer hover:border-blue-400 transition-colors"
                     >
                       {periods.map((period) => (
                         <option key={period.id} value={period.id}>
@@ -247,53 +247,74 @@ export default function NewShiftRequestPage() {
                     </select>
                   </div>
 
-                  {/* Date */}
+                  {/* Date - Clickable wrapper */}
                   <div>
                     <label htmlFor="date" className="block text-sm font-semibold text-gray-700 mb-2">
-                      Shift Date *
+                      Shift Date * <span className="text-xs font-normal text-gray-500">(Click anywhere to select date)</span>
                     </label>
-                    <input
-                      type="date"
-                      id="date"
-                      required
-                      value={formData.date}
-                      onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                      min={periods.find(p => p.id.toString() === formData.schedule_period)?.start_date}
-                      max={periods.find(p => p.id.toString() === formData.schedule_period)?.end_date}
-                      className="block w-full border-2 border-gray-300 rounded-lg shadow-sm py-3 px-4 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base"
-                    />
+                    <div 
+                      onClick={() => dateRef.current?.showPicker()}
+                      className="relative cursor-pointer"
+                    >
+                      <input
+                        ref={dateRef}
+                        type="date"
+                        id="date"
+                        required
+                        value={formData.date}
+                        onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                        min={periods.find(p => p.id.toString() === formData.schedule_period)?.start_date}
+                        max={periods.find(p => p.id.toString() === formData.schedule_period)?.end_date}
+                        className="block w-full border-2 border-gray-300 rounded-lg shadow-sm py-4 px-4 text-gray-900 font-bold text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all"
+                        style={{ colorScheme: 'light' }}
+                      />
+                    </div>
                   </div>
 
                   {/* Time Inputs Side by Side */}
                   <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                    {/* Start Time */}
+                    {/* Start Time - Clickable wrapper */}
                     <div>
                       <label htmlFor="start_time" className="block text-sm font-semibold text-gray-700 mb-2">
-                        Start Time *
+                        Start Time * <span className="text-xs font-normal text-gray-500">(Click to select)</span>
                       </label>
-                      <input
-                        type="time"
-                        id="start_time"
-                        required
-                        value={formData.start_time}
-                        onChange={(e) => setFormData({ ...formData, start_time: e.target.value })}
-                        className="block w-full border-2 border-gray-300 rounded-lg shadow-sm py-3 px-4 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base"
-                      />
+                      <div 
+                        onClick={() => startTimeRef.current?.showPicker()}
+                        className="relative cursor-pointer"
+                      >
+                        <input
+                          ref={startTimeRef}
+                          type="time"
+                          id="start_time"
+                          required
+                          value={formData.start_time}
+                          onChange={(e) => setFormData({ ...formData, start_time: e.target.value })}
+                          className="block w-full border-2 border-gray-300 rounded-lg shadow-sm py-4 px-4 text-gray-900 font-bold text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all"
+                          style={{ colorScheme: 'light' }}
+                        />
+                      </div>
                     </div>
 
-                    {/* End Time */}
+                    {/* End Time - Clickable wrapper */}
                     <div>
                       <label htmlFor="end_time" className="block text-sm font-semibold text-gray-700 mb-2">
-                        End Time *
+                        End Time * <span className="text-xs font-normal text-gray-500">(Click to select)</span>
                       </label>
-                      <input
-                        type="time"
-                        id="end_time"
-                        required
-                        value={formData.end_time}
-                        onChange={(e) => setFormData({ ...formData, end_time: e.target.value })}
-                        className="block w-full border-2 border-gray-300 rounded-lg shadow-sm py-3 px-4 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base"
-                      />
+                      <div 
+                        onClick={() => endTimeRef.current?.showPicker()}
+                        className="relative cursor-pointer"
+                      >
+                        <input
+                          ref={endTimeRef}
+                          type="time"
+                          id="end_time"
+                          required
+                          value={formData.end_time}
+                          onChange={(e) => setFormData({ ...formData, end_time: e.target.value })}
+                          className="block w-full border-2 border-gray-300 rounded-lg shadow-sm py-4 px-4 text-gray-900 font-bold text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all"
+                          style={{ colorScheme: 'light' }}
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -302,21 +323,21 @@ export default function NewShiftRequestPage() {
                     <div className={`rounded-lg p-4 ${isOvernight ? 'bg-purple-50 border-2 border-purple-300' : 'bg-blue-50 border-2 border-blue-300'}`}>
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-sm font-semibold text-gray-700">
+                          <p className="text-base font-bold text-gray-900">
                             Duration: {duration.hours.toFixed(2)} hours
                           </p>
                           {isOvernight && (
-                            <p className="text-xs text-purple-600 mt-1">
+                            <p className="text-sm text-purple-600 font-medium mt-1">
                               🌙 This is an overnight shift
                             </p>
                           )}
                         </div>
                         {duration.hours >= 8 ? (
-                          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">
+                          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold bg-green-100 text-green-800">
                             ✓ Meets minimum
                           </span>
                         ) : (
-                          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800">
+                          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold bg-yellow-100 text-yellow-800">
                             ⚠ Under 8 hours
                           </span>
                         )}
@@ -334,7 +355,7 @@ export default function NewShiftRequestPage() {
                       rows={4}
                       value={formData.notes}
                       onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                      className="block w-full border-2 border-gray-300 rounded-lg shadow-sm py-3 px-4 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base"
+                      className="block w-full border-2 border-gray-300 rounded-lg shadow-sm py-3 px-4 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base hover:border-blue-400 transition-colors"
                       placeholder="Any additional information about this shift..."
                     />
                   </div>
@@ -344,7 +365,7 @@ export default function NewShiftRequestPage() {
                     <button
                       type="submit"
                       disabled={loading || periods.length === 0}
-                      className="flex-1 inline-flex justify-center items-center py-3 px-6 border border-transparent shadow-lg text-base font-semibold rounded-lg text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                      className="flex-1 inline-flex justify-center items-center py-4 px-6 border border-transparent shadow-lg text-lg font-bold rounded-lg text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                     >
                       {loading ? (
                         <>
@@ -361,7 +382,7 @@ export default function NewShiftRequestPage() {
                     <button
                       type="button"
                       onClick={() => router.push('/dashboard')}
-                      className="inline-flex justify-center items-center py-3 px-6 border-2 border-gray-300 shadow-sm text-base font-semibold rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all"
+                      className="inline-flex justify-center items-center py-4 px-6 border-2 border-gray-300 shadow-sm text-lg font-bold rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all"
                     >
                       Cancel
                     </button>
@@ -376,7 +397,6 @@ export default function NewShiftRequestPage() {
   );
 }
 
-// IMPROVED: Helper function to calculate duration (handles overnight shifts)
 function calculateDuration(startTime: string, endTime: string): { hours: number; isOvernight: boolean } {
   if (!startTime || !endTime) return { hours: 0, isOvernight: false };
 
@@ -393,7 +413,6 @@ function calculateDuration(startTime: string, endTime: string): { hours: number;
   
   let isOvernight = false;
   
-  // If end time is earlier than start time, it's an overnight shift
   if (hours < 0) {
     hours += 24;
     isOvernight = true;
