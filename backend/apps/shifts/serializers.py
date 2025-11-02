@@ -57,12 +57,9 @@ class ShiftRequestCreateSerializer(serializers.ModelSerializer):
         
         requested_by = request.user
         
-        # Validate start_time < end_time
-        if start_time and end_time:
-            if start_time >= end_time:
-                raise serializers.ValidationError({
-                    'end_time': 'End time must be after start time.'
-                })
+        # REMOVED: Don't validate start_time < end_time here!
+        # The model handles overnight shifts correctly by adding 24 hours
+        # So we allow end_time to be "earlier" than start_time for overnight shifts
         
         # Validate date within period
         if schedule_period and date:
@@ -80,6 +77,8 @@ class ShiftRequestCreateSerializer(serializers.ModelSerializer):
             )
             
             for shift in overlapping:
+                # Check if times overlap
+                # For overnight shifts, we need to be more careful
                 if not (end_time <= shift.start_time or start_time >= shift.end_time):
                     raise serializers.ValidationError({
                         'time': f'You already have a shift from {shift.start_time} to {shift.end_time} on this date.'
