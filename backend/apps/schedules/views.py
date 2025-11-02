@@ -56,12 +56,12 @@ class SchedulePeriodViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         """Set created_by to current user"""
         serializer.save(created_by=self.request.user)
-    
+        
     @action(detail=True, methods=['post'])
     def finalize(self, request, pk=None):
         """
         Finalize a schedule period (admin only)
-        Validates that all critical times are covered before allowing finalization
+        Shows coverage warnings but does NOT block finalization.
         """
         period = self.get_object()
         
@@ -71,19 +71,66 @@ class SchedulePeriodViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # TODO: Validate critical time coverage (Task 6.4)
-        # For now, just finalize
+        # Check coverage and gather warnings (but don't block)
+        from apps.coverage.models import CriticalTimeCoverage
+        from datetime import timedelta
+        
+        coverage_warnings = []
+        current_date = period.start_date
+        
+        while current_date <= period.end_date:
+            try:
+                coverage = CriticalTimeCoverage.objects.get(date=current_date)
+                if not coverage.morning_covered:
+                    coverage_warnings.append(f"{current_date.strftime('%b %d')}: Morning (6-9 AM) not covered")
+                if not coverage.evening_covered:
+                    coverage_warnings.append(f"{current_date.strftime('%b %d')}: Evening (9-10 PM) not covered")
+            except CriticalTimeCoverage.DoesNotExist:
+                coverage_warnings.append(f"{current_date.strftime('%b %d')}: No coverage at all")
+            
+            current_date += timedelta(days=1)
+        
+        # Finalize regardless of coverage
         period.status = 'FINALIZED'
         period.save()
         
-        # TODO: Auto-reject all pending requests (Task 6.4)
-        # TODO: Send finalized notification email to all PAs (Task 6.4)
+        # Auto-reject all pending requests
+        from apps.shifts.models import ShiftRequest
+        pending = ShiftRequest.objects.filter(
+            schedule_period=period,
+            status='PENDING'
+        )
+        rejected_count = pending.count()
+        pending.update(
+            status='REJECTED',
+            rejected_reason='Schedule period has been finalized'
+        )
         
-        return Response({
-            'message': 'Schedule period finalized successfully.',
-            'period': SchedulePeriodSerializer(period).data
-        }, status=status.HTTP_200_OK)
-
+        # Send finalized notification email to all PAs
+        from apps.users.models import User
+        pa_emails = list(User.objects.filter(role='PA', is_active=True).values_list('email', flat=True))
+        
+        # TODO: Send finalized email (Phase 6.4)
+        # send_period_finalized_email.delay(period.id, pa_emails)
+        
+        # Broadcast WebSocket event
+        from apps.schedules.websocket_utils import broadcast_period_finalized
+        broadcast_period_finalized(period, message=f'{period.name} has been finalized')
+        
+        response_data = {
+            'message': f'Schedule period "{period.name}" finalized successfully.',
+            'period': SchedulePeriodSerializer(period).data,
+            'rejected_requests': rejected_count,
+        }
+        
+        # Include coverage warnings if any exist
+        if coverage_warnings:
+            response_data['coverage_warnings'] = coverage_warnings
+            response_data['warning_count'] = len(coverage_warnings)
+        else:
+            response_data['coverage_status'] = 'All critical times covered! ✅'
+        
+        return Response(response_data, status=status.HTTP_200_OK)
 
 class MonthViewAPI(APIView):
     """
