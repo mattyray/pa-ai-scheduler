@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { schedulesAPI, SchedulePeriod } from '@/lib/schedules-api';
-import { getPAColor, getPAColorLight, getPAColorDark, isOvernightShift } from '@/lib/pa-colors';
+import { getPAColor, getPAColorLight, getPAColorDark, isOvernightShift, splitOvernightShift } from '@/lib/pa-colors';
 
 type ViewType = 'month' | 'week' | 'day';
 
@@ -101,7 +101,6 @@ export default function SchedulePage() {
     return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
   };
 
-  // Get week date range for display
   const getWeekDateRange = (date: Date) => {
     const d = new Date(date);
     const day = d.getDay();
@@ -183,7 +182,6 @@ export default function SchedulePage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Navigation Header */}
       <nav className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
@@ -211,13 +209,10 @@ export default function SchedulePage() {
         </div>
       </nav>
 
-      {/* Main Content */}
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 sm:px-0">
-          {/* Controls Bar */}
           <div className="bg-white shadow rounded-lg p-4 mb-6">
             <div className="flex flex-wrap items-center justify-between gap-4">
-              {/* Period Selector */}
               <div className="flex items-center space-x-2">
                 <label className="text-sm font-medium text-gray-900">Period:</label>
                 <select
@@ -233,7 +228,6 @@ export default function SchedulePage() {
                 </select>
               </div>
 
-              {/* View Type Selector */}
               <div className="flex items-center space-x-2">
                 <button
                   onClick={() => setViewType('month')}
@@ -267,7 +261,6 @@ export default function SchedulePage() {
                 </button>
               </div>
 
-              {/* Date Navigation */}
               <div className="flex items-center space-x-2">
                 <button
                   onClick={goToPrevious}
@@ -294,13 +287,11 @@ export default function SchedulePage() {
               </div>
             </div>
 
-            {/* Current Date Display */}
             <div className="mt-4 text-center">
               <h2 className="text-2xl font-bold text-gray-900">{getDateTitle()}</h2>
             </div>
           </div>
 
-          {/* Calendar Display */}
           <div className="bg-white shadow rounded-lg overflow-hidden">
             {loading ? (
               <div className="p-12 text-center">
@@ -313,9 +304,9 @@ export default function SchedulePage() {
             ) : viewType === 'month' ? (
               <MonthView data={calendarData} onDayClick={handleDayClick} />
             ) : viewType === 'week' ? (
-              <WeekView data={calendarData} onDayClick={handleDayClick} />
+              <WeekViewTimeline data={calendarData} onDayClick={handleDayClick} />
             ) : (
-              <DayView data={calendarData} />
+              <DayViewTimeline data={calendarData} />
             )}
           </div>
         </div>
@@ -324,7 +315,6 @@ export default function SchedulePage() {
   );
 }
 
-// Helper function to convert 24-hour to 12-hour format
 function formatTime12Hour(time: string): string {
   const [hours, minutes] = time.split(':');
   const hour = parseInt(hours);
@@ -333,7 +323,6 @@ function formatTime12Hour(time: string): string {
   return `${hour12}:${minutes} ${ampm}`;
 }
 
-// Month View Component - IMPROVED
 function MonthView({ data, onDayClick }: { data: any; onDayClick: (date: string) => void }) {
   const getCoverageIndicator = (coverage: any) => {
     if (!coverage) return '❌';
@@ -351,7 +340,6 @@ function MonthView({ data, onDayClick }: { data: any; onDayClick: (date: string)
 
   return (
     <div className="p-4">
-      {/* Day Headers */}
       <div className="grid grid-cols-7 gap-2 mb-2">
         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
           <div key={day} className="text-center text-sm font-semibold text-gray-700 py-2">
@@ -360,7 +348,6 @@ function MonthView({ data, onDayClick }: { data: any; onDayClick: (date: string)
         ))}
       </div>
 
-      {/* Calendar Grid */}
       <div className="grid grid-cols-7 gap-2">
         {data.weeks?.map((week: any, weekIdx: number) =>
           week.days?.map((day: any, dayIdx: number) => {
@@ -369,7 +356,6 @@ function MonthView({ data, onDayClick }: { data: any; onDayClick: (date: string)
             const coverageColor = getCoverageColor(day.coverage);
             const coverageIndicator = getCoverageIndicator(day.coverage);
 
-            // Get unique PAs for this day
             const uniquePAs = Array.from(new Set(day.shifts?.map((s: any) => s.requested_by) || []));
             const shiftCount = day.shifts?.length || 0;
 
@@ -381,7 +367,6 @@ function MonthView({ data, onDayClick }: { data: any; onDayClick: (date: string)
                   !day.is_current_month ? 'opacity-40' : ''
                 } ${isToday ? 'ring-2 ring-blue-500' : ''}`}
               >
-                {/* Date and Coverage Indicator */}
                 <div className="flex justify-between items-start mb-2">
                   <span className={`text-lg font-bold ${isToday ? 'text-blue-600' : 'text-gray-900'}`}>
                     {date.getDate()}
@@ -389,7 +374,6 @@ function MonthView({ data, onDayClick }: { data: any; onDayClick: (date: string)
                   <span className="text-xl">{coverageIndicator}</span>
                 </div>
 
-                {/* PA Dots */}
                 <div className="flex flex-wrap gap-1 mb-2">
                   {uniquePAs.slice(0, 3).map((paId: any, idx: number) => (
                     <div
@@ -404,7 +388,6 @@ function MonthView({ data, onDayClick }: { data: any; onDayClick: (date: string)
                   )}
                 </div>
 
-                {/* Shift Count */}
                 {shiftCount > 0 && (
                   <div className="text-xs text-gray-600 font-medium">
                     {shiftCount} shift{shiftCount !== 1 ? 's' : ''}
@@ -416,7 +399,6 @@ function MonthView({ data, onDayClick }: { data: any; onDayClick: (date: string)
         )}
       </div>
 
-      {/* Legend */}
       <div className="mt-6 flex items-center justify-center space-x-6 text-sm text-gray-600">
         <div className="flex items-center space-x-2">
           <span className="text-xl">✅</span>
@@ -435,142 +417,211 @@ function MonthView({ data, onDayClick }: { data: any; onDayClick: (date: string)
   );
 }
 
-// Week View Component - PLACEHOLDER (will improve in Phase 3)
-function WeekView({ data, onDayClick }: { data: any; onDayClick: (date: string) => void }) {
-  const getCoverageColor = (coverage: any) => {
-    if (!coverage) return 'bg-white';
-    if (coverage.morning_covered && coverage.evening_covered) return 'bg-green-50';
-    if (coverage.morning_covered || coverage.evening_covered) return 'bg-yellow-50';
-    return 'bg-red-50';
+function WeekViewTimeline({ data, onDayClick }: { data: any; onDayClick: (date: string) => void }) {
+  const hours = Array.from({ length: 18 }, (_, i) => i + 6);
+
+  const timeToPosition = (time: string): number => {
+    const [hours, minutes] = time.split(':').map(Number);
+    return ((hours - 6) * 60 + minutes) / (18 * 60) * 100;
+  };
+
+  const isCriticalHour = (hour: number): boolean => {
+    return (hour >= 6 && hour < 9) || (hour >= 21 && hour < 22);
   };
 
   return (
-    <div className="p-4">
-      <div className="grid grid-cols-7 gap-3">
-        {data.days?.map((day: any) => {
-          const date = new Date(day.date);
-          const isToday = date.toDateString() === new Date().toDateString();
-          const bgColor = getCoverageColor(day.coverage);
-
-          return (
-            <div 
-              key={day.date} 
-              onClick={() => onDayClick(day.date)}
-              className={`border-2 rounded-lg p-3 cursor-pointer hover:shadow-lg transition-all ${bgColor} ${
-                isToday ? 'ring-2 ring-blue-500 border-blue-400' : 'border-gray-300'
-              }`}
-            >
-              <div className="font-semibold text-center mb-2 text-gray-900">
-                {date.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' })}
-              </div>
-              
-              {/* Coverage indicators */}
-              {day.coverage && (
-                <div className="flex justify-center space-x-2 mb-2 text-xs">
-                  {day.coverage.morning_covered && <span>🌅</span>}
-                  {day.coverage.evening_covered && <span>🌙</span>}
+    <div className="p-4 overflow-x-auto">
+      <div className="min-w-[800px]">
+        <div className="grid grid-cols-8 gap-2">
+          <div className="text-xs font-semibold text-gray-600"></div>
+          {data.days?.map((day: any) => {
+            const date = new Date(day.date);
+            const isToday = date.toDateString() === new Date().toDateString();
+            
+            return (
+              <div
+                key={day.date}
+                onClick={() => onDayClick(day.date)}
+                className={`text-center p-2 rounded-t-lg cursor-pointer hover:bg-blue-50 ${
+                  isToday ? 'bg-blue-100 font-bold' : 'bg-gray-50'
+                }`}
+              >
+                <div className="text-xs font-semibold">
+                  {date.toLocaleDateString('en-US', { weekday: 'short' })}
                 </div>
-              )}
-
-              <div className="space-y-2">
-                {day.shifts?.length === 0 ? (
-                  <p className="text-xs text-center text-gray-400">No shifts</p>
-                ) : (
-                  day.shifts?.map((shift: any) => (
-                    <div
-                      key={shift.id}
-                      className="text-xs rounded px-2 py-1.5 text-white"
-                      style={{ backgroundColor: getPAColor(shift.requested_by) }}
-                      title={`${shift.pa_name}: ${formatTime12Hour(shift.start_time)} - ${formatTime12Hour(shift.end_time)}`}
-                    >
-                      <div className="font-semibold truncate">{shift.pa_name}</div>
-                      <div className="text-[10px] opacity-90">
-                        {formatTime12Hour(shift.start_time)}
-                      </div>
-                      <div className="text-[10px] opacity-90">
-                        {formatTime12Hour(shift.end_time)}
-                      </div>
-                    </div>
-                  ))
+                <div className={`text-lg ${isToday ? 'text-blue-600' : 'text-gray-900'}`}>
+                  {date.getDate()}
+                </div>
+                {day.coverage && (
+                  <div className="flex justify-center space-x-1 text-xs mt-1">
+                    {day.coverage.morning_covered && <span>��</span>}
+                    {day.coverage.evening_covered && <span>🌙</span>}
+                  </div>
                 )}
               </div>
+            );
+          })}
+        </div>
 
-              {/* Total hours */}
-              {day.total_hours > 0 && (
-                <div className="mt-2 text-xs text-center text-gray-600 font-medium">
-                  {day.total_hours}h total
-                </div>
-              )}
+        <div className="grid grid-cols-8 gap-2 mt-2">
+          <div>
+            {hours.map((hour) => (
+              <div
+                key={hour}
+                className={`h-16 border-b border-gray-200 flex items-start justify-end pr-2 text-xs text-gray-600 ${
+                  isCriticalHour(hour) ? 'bg-yellow-50' : ''
+                }`}
+              >
+                <span>
+                  {hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`}
+                  {isCriticalHour(hour) && (hour === 6 ? ' ��' : hour === 21 ? ' 🌙' : '')}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {data.days?.map((day: any) => (
+            <div key={day.date} className="relative">
+              {hours.map((hour) => (
+                <div
+                  key={hour}
+                  className={`h-16 border-b border-r border-gray-200 ${
+                    isCriticalHour(hour) ? 'bg-yellow-50' : 'bg-white'
+                  }`}
+                />
+              ))}
+              
+              <div className="absolute inset-0 pointer-events-none">
+                {day.shifts?.map((shift: any) => {
+                  const startPos = timeToPosition(shift.start_time);
+                  const endPos = timeToPosition(shift.end_time);
+                  const height = endPos - startPos;
+                  
+                  if (height <= 0) return null;
+
+                  return (
+                    <div
+                      key={shift.id}
+                      className="absolute left-1 right-1 rounded px-1 py-1 text-xs text-white font-medium overflow-hidden pointer-events-auto cursor-pointer hover:opacity-90"
+                      style={{
+                        top: `${startPos}%`,
+                        height: `${height}%`,
+                        backgroundColor: getPAColor(shift.requested_by),
+                      }}
+                      title={`${shift.pa_name}: ${formatTime12Hour(shift.start_time)} - ${formatTime12Hour(shift.end_time)}`}
+                    >
+                      <div className="truncate">{shift.pa_name}</div>
+                      {height > 3 && (
+                        <div className="text-[10px] opacity-90 truncate">
+                          {formatTime12Hour(shift.start_time)}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          );
-        })}
+          ))}
+        </div>
       </div>
     </div>
   );
 }
 
-// Day View Component - PLACEHOLDER (will improve in Phase 3)
-function DayView({ data }: { data: any }) {
+function DayViewTimeline({ data }: { data: any }) {
+  const hours = Array.from({ length: 18 }, (_, i) => i + 6);
+
+  const timeToPosition = (time: string): number => {
+    const [hours, minutes] = time.split(':').map(Number);
+    return ((hours - 6) * 60 + minutes) / (18 * 60) * 100;
+  };
+
+  const isCriticalHour = (hour: number): boolean => {
+    return (hour >= 6 && hour < 9) || (hour >= 21 && hour < 22);
+  };
+
   return (
-    <div className="p-4">
-      <div className="mb-4 pb-4 border-b">
-        <h3 className="text-lg font-semibold text-gray-900">{data.day_name}</h3>
-        <div className="flex items-center space-x-4 mt-2 text-sm text-gray-600">
-          <span>Morning (6-9 AM): {data.coverage?.morning_covered ? '✅ Covered' : '❌ Not Covered'}</span>
-          <span>Evening (9-10 PM): {data.coverage?.evening_covered ? '✅ Covered' : '❌ Not Covered'}</span>
+    <div className="p-6">
+      <div className="mb-6 pb-4 border-b">
+        <h3 className="text-xl font-semibold text-gray-900">{data.day_name}</h3>
+        <div className="flex items-center space-x-6 mt-2 text-sm">
+          <span className={data.coverage?.morning_covered ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
+            Morning (6-9 AM): {data.coverage?.morning_covered ? '✅ Covered' : '❌ Not Covered'}
+          </span>
+          <span className={data.coverage?.evening_covered ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
+            Evening (9-10 PM): {data.coverage?.evening_covered ? '✅ Covered' : '❌ Not Covered'}
+          </span>
         </div>
       </div>
 
-      <div className="space-y-3">
-        {data.shifts?.length === 0 ? (
-          <div className="text-center py-12 bg-gray-50 rounded-lg">
-            <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-            <p className="mt-2 text-gray-500">No shifts scheduled for this day</p>
-          </div>
-        ) : (
-          data.shifts?.map((shift: any) => {
-            const paColor = getPAColor(shift.requested_by);
-            const paColorLight = getPAColorLight(shift.requested_by);
-            
-            return (
-              <div
-                key={shift.id}
-                className="border-2 rounded-lg p-4 hover:shadow-md transition-shadow"
-                style={{ 
-                  backgroundColor: paColorLight,
-                  borderColor: paColor 
-                }}
-              >
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
-                    <h4 className="font-semibold text-lg text-gray-900">{shift.pa_name}</h4>
-                    <div className="mt-2 space-y-1">
-                      <p className="text-sm text-gray-600">
-                        <span className="font-medium">Time:</span> {formatTime12Hour(shift.start_time)} - {formatTime12Hour(shift.end_time)}
-                      </p>
-                      <p className="text-sm text-gray-600">
-                        <span className="font-medium">Duration:</span> {shift.duration_hours} hours
-                      </p>
-                      {shift.notes && (
-                        <p className="text-sm text-gray-600 mt-2">
-                          <span className="font-medium">Notes:</span> {shift.notes}
-                        </p>
-                      )}
-                    </div>
+      <div className="grid grid-cols-[100px_1fr] gap-4">
+        <div>
+          {hours.map((hour) => (
+            <div
+              key={hour}
+              className={`h-20 border-b border-gray-200 flex items-start justify-end pr-3 text-sm text-gray-600 font-medium ${
+                isCriticalHour(hour) ? 'bg-yellow-50' : ''
+              }`}
+            >
+              <span>
+                {hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`}
+                {isCriticalHour(hour) && (hour === 6 ? ' 🌅' : hour === 21 ? ' 🌙' : '')}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <div className="relative">
+          {hours.map((hour) => (
+            <div
+              key={hour}
+              className={`h-20 border-b border-l border-gray-200 ${
+                isCriticalHour(hour) ? 'bg-yellow-50' : 'bg-white'
+              }`}
+            />
+          ))}
+          
+          <div className="absolute inset-0">
+            {data.shifts?.map((shift: any) => {
+              const startPos = timeToPosition(shift.start_time);
+              const endPos = timeToPosition(shift.end_time);
+              const height = endPos - startPos;
+              
+              if (height <= 0) return null;
+
+              return (
+                <div
+                  key={shift.id}
+                  className="absolute left-2 right-2 rounded-lg p-3 text-white shadow-lg cursor-pointer hover:shadow-xl transition-shadow"
+                  style={{
+                    top: `${startPos}%`,
+                    height: `${height}%`,
+                    backgroundColor: getPAColor(shift.requested_by),
+                  }}
+                >
+                  <div className="font-semibold text-base">{shift.pa_name}</div>
+                  <div className="text-sm mt-1">
+                    {formatTime12Hour(shift.start_time)} - {formatTime12Hour(shift.end_time)}
                   </div>
-                  <span className={`px-3 py-1 text-xs font-semibold rounded-full ${
-                    shift.status === 'APPROVED' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                  }`}>
-                    {shift.status}
-                  </span>
+                  <div className="text-sm opacity-90">{shift.duration_hours} hours</div>
+                  {shift.notes && (
+                    <div className="text-xs mt-2 opacity-90 italic">{shift.notes}</div>
+                  )}
                 </div>
-              </div>
-            );
-          })
-        )}
+              );
+            })}
+          </div>
+        </div>
       </div>
+
+      {data.shifts?.length === 0 && (
+        <div className="text-center py-12 bg-gray-50 rounded-lg mt-4">
+          <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          <p className="mt-2 text-gray-500">No shifts scheduled for this day</p>
+        </div>
+      )}
     </div>
   );
 }
