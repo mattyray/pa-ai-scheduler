@@ -15,6 +15,7 @@ from .serializers import (
     UserProfileUpdateSerializer
 )
 from .models import EmailVerificationToken, PasswordResetToken
+from .emails import send_verification_email, send_password_reset_email
 
 User = get_user_model()
 
@@ -36,13 +37,12 @@ class RegisterView(generics.CreateAPIView):
         # Create verification token
         token = EmailVerificationToken.objects.create(user=user)
         
-        # TODO: Send verification email (Task 1.3)
-        # send_verification_email(user, token)
+        # Send verification email (async with Celery)
+        send_verification_email.delay(user.id, str(token.token))
         
         return Response({
             'message': 'Registration successful. Please check your email to verify your account.',
             'user': UserSerializer(user).data,
-            'verification_token': str(token.token)  # Remove in production
         }, status=status.HTTP_201_CREATED)
 
 
@@ -180,15 +180,14 @@ class PasswordResetRequestView(APIView):
             # Create reset token
             token = PasswordResetToken.objects.create(user=user)
             
-            # TODO: Send reset email (Task 1.3)
-            # send_password_reset_email(user, token)
+            # Send reset email (async with Celery)
+            send_password_reset_email.delay(user.id, str(token.token))
             
             return Response({
                 'message': 'Password reset email sent. Please check your email.',
-                'reset_token': str(token.token)  # Remove in production
             }, status=status.HTTP_200_OK)
         except User.DoesNotExist:
-            # Don't reveal if email exists
+            # Don't reveal if email exists (security best practice)
             return Response({
                 'message': 'If that email exists, a password reset link has been sent.'
             }, status=status.HTTP_200_OK)
