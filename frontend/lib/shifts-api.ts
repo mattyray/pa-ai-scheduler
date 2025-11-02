@@ -18,10 +18,10 @@ export interface ShiftRequest {
   updated_at: string;
   approved_at: string | null;
   approved_by: number | null;
-  approved_by_name: string;
+  approved_by_name: string | null;
 }
 
-export interface CreateShiftRequest {
+export interface CreateShiftRequestData {
   schedule_period: number;
   date: string;
   start_time: string;
@@ -30,45 +30,24 @@ export interface CreateShiftRequest {
 }
 
 export const shiftsAPI = {
-  // List shifts (with filters)
-  listShifts: (params?: {
-    status?: string;
-    period?: number;
-    start_date?: string;
-    end_date?: string;
-  }) => {
-    const queryString = new URLSearchParams(params as any).toString();
-    return api.get(`/api/shifts/${queryString ? `?${queryString}` : ''}`);
-  },
-
-  // Get single shift
-  getShift: (id: number) => api.get(`/api/shifts/${id}/`),
-
-  // Create shift request (PA)
-  createShiftRequest: (data: CreateShiftRequest) => 
-    api.post('/api/shifts/', data),
-
-  // Update shift request (own pending requests only)
-  updateShiftRequest: (id: number, data: Partial<CreateShiftRequest>) => 
-    api.patch(`/api/shifts/${id}/`, data),
-
-  // Delete/cancel shift request
-  deleteShiftRequest: (id: number) => 
-    api.delete(`/api/shifts/${id}/`),
-
-  // Get pending requests (admin only)
-  getPendingRequests: () => 
-    api.get('/api/shifts/pending/'),
-
-  // Get my schedule (PA only)
-  getMySchedule: () => 
-    api.get('/api/shifts/my-schedule/'),
-
-  // Approve shift (admin only)
-  approveShift: (id: number, admin_notes?: string) => 
-    api.post(`/api/shifts/${id}/approve/`, { admin_notes }),
-
-  // Reject shift (admin only)
-  rejectShift: (id: number, rejected_reason: string) => 
-    api.post(`/api/shifts/${id}/reject/`, { rejected_reason }),
+  listRequests: () => 
+    api.get<{ results: ShiftRequest[] }>('/api/shifts/requests/'),
+  
+  listShifts: () => 
+    api.get<{ results: ShiftRequest[] }>('/api/shifts/requests/'),
+  
+  createRequest: (data: CreateShiftRequestData) => 
+    api.post<ShiftRequest>('/api/shifts/requests/', data),
+  
+  getRequest: (id: number) => 
+    api.get<ShiftRequest>(`/api/shifts/requests/${id}/`),
+  
+  approveRequest: (id: number, admin_notes?: string) => 
+    api.post<ShiftRequest>(`/api/shifts/requests/${id}/approve/`, { admin_notes }),
+  
+  rejectRequest: (id: number, rejected_reason: string) => 
+    api.post<ShiftRequest>(`/api/shifts/requests/${id}/reject/`, { rejected_reason }),
+  
+  cancelRequest: (id: number) => 
+    api.post<ShiftRequest>(`/api/shifts/requests/${id}/cancel/`),
 };
