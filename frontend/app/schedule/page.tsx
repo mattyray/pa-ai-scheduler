@@ -145,6 +145,17 @@ export default function SchedulePage() {
     }
   };
 
+  const handleDayClick = (date: string) => {
+    const clickedDate = new Date(date);
+    setCurrentDate(clickedDate);
+    
+    if (viewType === 'month') {
+      setViewType('week');
+    } else if (viewType === 'week') {
+      setViewType('day');
+    }
+  };
+
   if (authLoading || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -283,9 +294,9 @@ export default function SchedulePage() {
                 <p className="text-gray-500">No data available</p>
               </div>
             ) : viewType === 'month' ? (
-              <MonthView data={calendarData} />
+              <MonthView data={calendarData} onDayClick={handleDayClick} />
             ) : viewType === 'week' ? (
-              <WeekView data={calendarData} />
+              <WeekView data={calendarData} onDayClick={handleDayClick} />
             ) : (
               <DayView data={calendarData} />
             )}
@@ -296,8 +307,17 @@ export default function SchedulePage() {
   );
 }
 
+// Helper function to convert 24-hour to 12-hour format
+function formatTime12Hour(time: string): string {
+  const [hours, minutes] = time.split(':');
+  const hour = parseInt(hours);
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 || 12;
+  return `${hour12}:${minutes} ${ampm}`;
+}
+
 // Month View Component
-function MonthView({ data }: { data: any }) {
+function MonthView({ data, onDayClick }: { data: any; onDayClick: (date: string) => void }) {
   const getCoverageColor = (status: string) => {
     switch (status) {
       case 'complete':
@@ -331,7 +351,8 @@ function MonthView({ data }: { data: any }) {
             return (
               <div
                 key={`${weekIdx}-${dayIdx}`}
-                className={`min-h-24 border-2 rounded-lg p-2 ${coverageColor} ${
+                onClick={() => onDayClick(day.date)}
+                className={`min-h-24 border-2 rounded-lg p-2 cursor-pointer hover:shadow-lg transition-shadow ${coverageColor} ${
                   !day.is_current_month ? 'opacity-40' : ''
                 } ${isToday ? 'ring-2 ring-blue-500' : ''}`}
               >
@@ -342,7 +363,7 @@ function MonthView({ data }: { data: any }) {
                   {day.coverage && (
                     <div className="flex space-x-1">
                       {day.coverage.morning_covered && (
-                        <span className="text-xs">🌅</span>
+                        <span className="text-xs">��</span>
                       )}
                       {day.coverage.evening_covered && (
                         <span className="text-xs">🌙</span>
@@ -355,7 +376,7 @@ function MonthView({ data }: { data: any }) {
                     <div
                       key={shift.id}
                       className="text-xs bg-blue-500 text-white rounded px-1 py-0.5 truncate"
-                      title={`${shift.pa_name}: ${shift.start_time} - ${shift.end_time}`}
+                      title={`${shift.pa_name}: ${formatTime12Hour(shift.start_time)} - ${formatTime12Hour(shift.end_time)}`}
                     >
                       {shift.pa_name}
                     </div>
@@ -391,67 +412,128 @@ function MonthView({ data }: { data: any }) {
   );
 }
 
-// Week View Component (simplified)
-function WeekView({ data }: { data: any }) {
+// Week View Component
+function WeekView({ data, onDayClick }: { data: any; onDayClick: (date: string) => void }) {
+  const getCoverageColor = (coverage: any) => {
+    if (!coverage) return 'bg-white';
+    switch (coverage.status) {
+      case 'complete':
+        return 'bg-green-50';
+      case 'partial':
+        return 'bg-yellow-50';
+      default:
+        return 'bg-red-50';
+    }
+  };
+
   return (
     <div className="p-4">
-      <div className="grid grid-cols-7 gap-2">
-        {data.days?.map((day: any) => (
-          <div key={day.date} className="border rounded-lg p-2">
-            <div className="font-semibold text-center mb-2">
-              {new Date(day.date).toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' })}
-            </div>
-            <div className="space-y-1">
-              {day.shifts?.map((shift: any) => (
-                <div
-                  key={shift.id}
-                  className="text-xs bg-blue-500 text-white rounded px-2 py-1"
-                  title={`${shift.pa_name}: ${shift.start_time} - ${shift.end_time}`}
-                >
-                  <div className="font-semibold truncate">{shift.pa_name}</div>
-                  <div>{shift.start_time} - {shift.end_time}</div>
+      <div className="grid grid-cols-7 gap-3">
+        {data.days?.map((day: any) => {
+          const date = new Date(day.date);
+          const isToday = date.toDateString() === new Date().toDateString();
+          const bgColor = getCoverageColor(day.coverage);
+
+          return (
+            <div 
+              key={day.date} 
+              onClick={() => onDayClick(day.date)}
+              className={`border-2 rounded-lg p-3 cursor-pointer hover:shadow-lg transition-all ${bgColor} ${
+                isToday ? 'ring-2 ring-blue-500 border-blue-400' : 'border-gray-300'
+              }`}
+            >
+              <div className="font-semibold text-center mb-2 text-gray-900">
+                {date.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' })}
+              </div>
+              
+              {/* Coverage indicators */}
+              {day.coverage && (
+                <div className="flex justify-center space-x-2 mb-2 text-xs">
+                  {day.coverage.morning_covered && <span>🌅</span>}
+                  {day.coverage.evening_covered && <span>🌙</span>}
                 </div>
-              ))}
+              )}
+
+              <div className="space-y-2">
+                {day.shifts?.length === 0 ? (
+                  <p className="text-xs text-center text-gray-400">No shifts</p>
+                ) : (
+                  day.shifts?.map((shift: any) => (
+                    <div
+                      key={shift.id}
+                      className="text-xs bg-blue-500 text-white rounded px-2 py-1.5"
+                      title={`${shift.pa_name}: ${formatTime12Hour(shift.start_time)} - ${formatTime12Hour(shift.end_time)}`}
+                    >
+                      <div className="font-semibold truncate">{shift.pa_name}</div>
+                      <div className="text-[10px] opacity-90">
+                        {formatTime12Hour(shift.start_time)}
+                      </div>
+                      <div className="text-[10px] opacity-90">
+                        {formatTime12Hour(shift.end_time)}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Total hours */}
+              {day.total_hours > 0 && (
+                <div className="mt-2 text-xs text-center text-gray-600 font-medium">
+                  {day.total_hours}h total
+                </div>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
 }
 
-// Day View Component (simplified)
+// Day View Component
 function DayView({ data }: { data: any }) {
   return (
     <div className="p-4">
-      <div className="mb-4">
+      <div className="mb-4 pb-4 border-b">
         <h3 className="text-lg font-semibold text-gray-900">{data.day_name}</h3>
         <div className="flex items-center space-x-4 mt-2 text-sm text-gray-600">
-          <span>Morning: {data.coverage?.morning_covered ? '✅' : '❌'}</span>
-          <span>Evening: {data.coverage?.evening_covered ? '✅' : '❌'}</span>
+          <span>Morning (6-9 AM): {data.coverage?.morning_covered ? '✅ Covered' : '❌ Not Covered'}</span>
+          <span>Evening (9-10 PM): {data.coverage?.evening_covered ? '✅ Covered' : '❌ Not Covered'}</span>
         </div>
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-3">
         {data.shifts?.length === 0 ? (
-          <p className="text-center text-gray-500 py-8">No shifts scheduled</p>
+          <div className="text-center py-12 bg-gray-50 rounded-lg">
+            <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            <p className="mt-2 text-gray-500">No shifts scheduled for this day</p>
+          </div>
         ) : (
           data.shifts?.map((shift: any) => (
             <div
               key={shift.id}
-              className="border border-gray-300 rounded-lg p-4 bg-blue-50"
+              className="border-2 border-gray-300 rounded-lg p-4 bg-gradient-to-r from-blue-50 to-white hover:shadow-md transition-shadow"
             >
               <div className="flex justify-between items-start">
-                <div>
-                  <h4 className="font-semibold text-gray-900">{shift.pa_name}</h4>
-                  <p className="text-sm text-gray-600">
-                    {shift.start_time} - {shift.end_time} ({shift.duration_hours} hours)
-                  </p>
-                  {shift.notes && (
-                    <p className="text-sm text-gray-500 mt-1">{shift.notes}</p>
-                  )}
+                <div className="flex-1">
+                  <h4 className="font-semibold text-lg text-gray-900">{shift.pa_name}</h4>
+                  <div className="mt-2 space-y-1">
+                    <p className="text-sm text-gray-600">
+                      <span className="font-medium">Time:</span> {formatTime12Hour(shift.start_time)} - {formatTime12Hour(shift.end_time)}
+                    </p>
+                    <p className="text-sm text-gray-600">
+                      <span className="font-medium">Duration:</span> {shift.duration_hours} hours
+                    </p>
+                    {shift.notes && (
+                      <p className="text-sm text-gray-600 mt-2">
+                        <span className="font-medium">Notes:</span> {shift.notes}
+                      </p>
+                    )}
+                  </div>
                 </div>
-                <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                <span className={`px-3 py-1 text-xs font-semibold rounded-full ${
                   shift.status === 'APPROVED' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
                 }`}>
                   {shift.status}
