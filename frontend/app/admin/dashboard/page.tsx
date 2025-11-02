@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/auth-context';
 import { schedulesAPI } from '@/lib/schedules-api';
 import { shiftsAPI } from '@/lib/shifts-api';
 import { getPAColor } from '@/lib/pa-colors';
+import SuggestShiftModal from './SuggestShiftModal';
 
 interface DashboardStats {
   pending_requests: number;
@@ -29,6 +30,9 @@ export default function AdminDashboard() {
   const [calendarData, setCalendarData] = useState<any>(null);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [dataLoading, setDataLoading] = useState(true);
+  
+  const [showSuggestModal, setShowSuggestModal] = useState(false);
+  const [selectedGap, setSelectedGap] = useState<any>(null);
 
   useEffect(() => {
     if (!loading && !isAdmin) {
@@ -46,35 +50,30 @@ export default function AdminDashboard() {
     try {
       setDataLoading(true);
       
-      // Load stats
       const shiftsResponse = await shiftsAPI.listRequests();
       const allShifts = shiftsResponse.data.results || shiftsResponse.data;
       const pending = allShifts.filter((s: any) => s.status === 'PENDING');
       const approved = allShifts.filter((s: any) => s.status === 'APPROVED');
       
-      // Get unique PAs
       const uniquePAs = new Set(allShifts.map((s: any) => s.requested_by));
       
       setStats({
         pending_requests: pending.length,
-        coverage_gaps: 0, // Will calculate from calendar
+        coverage_gaps: 0,
         total_shifts: approved.length,
         active_pas: uniquePAs.size,
       });
       
-      // Load today's shifts
       const today = new Date().toISOString().split('T')[0];
       const todayData = await schedulesAPI.getDayView(today);
       setTodayShifts(todayData.data.shifts || []);
       
-      // Load month calendar
       const monthData = await schedulesAPI.getMonthView(
         currentMonth.getFullYear(),
         currentMonth.getMonth() + 1
       );
       setCalendarData(monthData.data);
       
-      // Calculate coverage gaps
       const gaps: any[] = [];
       monthData.data.weeks?.forEach((week: any) => {
         week.days?.forEach((day: any) => {
@@ -87,6 +86,8 @@ export default function AdminDashboard() {
                   month: 'short',
                   day: 'numeric',
                 }),
+                start_time: '06:00',
+                end_time: '09:00',
               });
             }
             if (!day.coverage?.evening_covered) {
@@ -97,12 +98,14 @@ export default function AdminDashboard() {
                   month: 'short',
                   day: 'numeric',
                 }),
+                start_time: '21:00',
+                end_time: '22:00',
               });
             }
           }
         });
       });
-      setCoverageGaps(gaps.slice(0, 5)); // Top 5 gaps
+      setCoverageGaps(gaps.slice(0, 5));
       setStats(prev => ({ ...prev, coverage_gaps: gaps.length }));
       
     } catch (err) {
@@ -113,7 +116,6 @@ export default function AdminDashboard() {
   };
 
   const handleDayClick = (date: string) => {
-    // Navigate to week view for that date
     router.push(`/schedule?view=week&date=${date}`);
   };
 
@@ -133,6 +135,15 @@ export default function AdminDashboard() {
     setCurrentMonth(new Date());
   };
 
+  const handleSuggestShift = (gap: any) => {
+    setSelectedGap(gap);
+    setShowSuggestModal(true);
+  };
+
+  const handleSuggestionSuccess = () => {
+    loadDashboardData();
+  };
+
   if (loading || dataLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -143,7 +154,6 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Navigation Header */}
       <nav className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
@@ -165,14 +175,11 @@ export default function AdminDashboard() {
         </div>
       </nav>
 
-      {/* Main Content */}
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 sm:px-0">
           
-          {/* Top Row: Calendar + Quick Stats */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
             
-            {/* Month Calendar - 2 columns */}
             <div className="lg:col-span-2">
               <div className="bg-white shadow rounded-lg p-6">
                 <div className="flex items-center justify-between mb-4">
@@ -213,7 +220,6 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* Quick Stats - 1 column */}
             <div className="space-y-4">
               <div className="bg-white shadow rounded-lg p-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Stats</h3>
@@ -246,10 +252,8 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* Bottom Row: Today's Shifts + Coverage Gaps */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
             
-            {/* Today's Shifts */}
             <div className="bg-white shadow rounded-lg p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Today's Shifts</h3>
               {todayShifts.length === 0 ? (
@@ -278,7 +282,6 @@ export default function AdminDashboard() {
               )}
             </div>
 
-            {/* Coverage Gaps */}
             <div className="bg-white shadow rounded-lg p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">
                 Coverage Gaps ({coverageGaps.length})
@@ -305,10 +308,7 @@ export default function AdminDashboard() {
                       </div>
                       <button
                         className="px-3 py-1 bg-blue-600 text-white text-xs font-medium rounded hover:bg-blue-700"
-                        onClick={() => {
-                          // TODO: Open suggest shift modal
-                          alert('Suggest shift feature coming in Phase 4!');
-                        }}
+                        onClick={() => handleSuggestShift(gap)}
                       >
                         Suggest
                       </button>
@@ -319,7 +319,6 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* Quick Actions */}
           <div className="bg-white shadow rounded-lg p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -357,11 +356,22 @@ export default function AdminDashboard() {
 
         </div>
       </main>
+
+      <SuggestShiftModal
+        isOpen={showSuggestModal}
+        onClose={() => {
+          setShowSuggestModal(false);
+          setSelectedGap(null);
+        }}
+        onSuccess={handleSuggestionSuccess}
+        defaultDate={selectedGap?.date}
+        defaultStartTime={selectedGap?.start_time}
+        defaultEndTime={selectedGap?.end_time}
+      />
     </div>
   );
 }
 
-// Mini Month Calendar Component for Dashboard
 function MiniMonthCalendar({ data, onDayClick }: { data: any; onDayClick: (date: string) => void }) {
   if (!data) return null;
 
@@ -374,7 +384,6 @@ function MiniMonthCalendar({ data, onDayClick }: { data: any; onDayClick: (date:
 
   return (
     <div>
-      {/* Day Headers */}
       <div className="grid grid-cols-7 gap-1 mb-1">
         {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, idx) => (
           <div key={idx} className="text-center text-xs font-semibold text-gray-600 py-1">
@@ -383,7 +392,6 @@ function MiniMonthCalendar({ data, onDayClick }: { data: any; onDayClick: (date:
         ))}
       </div>
 
-      {/* Calendar Grid */}
       <div className="grid grid-cols-7 gap-1">
         {data.weeks?.map((week: any, weekIdx: number) =>
           week.days?.map((day: any, dayIdx: number) => {
@@ -414,7 +422,6 @@ function MiniMonthCalendar({ data, onDayClick }: { data: any; onDayClick: (date:
   );
 }
 
-// Helper function
 function formatTime12Hour(time: string): string {
   const [hours, minutes] = time.split(':');
   const hour = parseInt(hours);
