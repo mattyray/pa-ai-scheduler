@@ -1,7 +1,7 @@
 # TOTETAXI - BACKEND CODE SNAPSHOT
 # AUTO-GENERATED - CODE FILES ONLY
-# Created: 2025-10-31 18:47:44
-# Total files: 68
+# Created: 2025-11-02 14:03:12
+# Total files: 76
 # 🔒 SECURITY: .env files excluded (contain secrets)
 # 📋 INCLUDES: All Django apps, migrations, configuration
 # Apps: accounts (STAFF), bookings, customers, logistics, payments, services
@@ -257,6 +257,92 @@ def main():
 
 if __name__ == '__main__':
     main()
+```
+
+# ==== project_structure.txt ====
+
+```
+.
+├── apps
+│   ├── ai
+│   │   ├── migrations
+│   │   │   └── __init__.py
+│   │   ├── __init__.py
+│   │   ├── admin.py
+│   │   ├── apps.py
+│   │   ├── models.py
+│   │   ├── tests.py
+│   │   └── views.py
+│   ├── schedules
+│   │   ├── migrations
+│   │   │   ├── __init__.py
+│   │   │   └── 0001_initial.py
+│   │   ├── __init__.py
+│   │   ├── admin.py
+│   │   ├── apps.py
+│   │   ├── consumers.py
+│   │   ├── models.py
+│   │   ├── routing.py
+│   │   ├── serializers.py
+│   │   ├── tests.py
+│   │   ├── urls.py
+│   │   ├── utils.py
+│   │   ├── views.py
+│   │   └── websocket_utils.py
+│   ├── shifts
+│   │   ├── migrations
+│   │   │   ├── __init__.py
+│   │   │   └── 0001_initial.py
+│   │   ├── templates
+│   │   │   └── emails
+│   │   │       ├── new_request_admin.html
+│   │   │       ├── new_request_admin.txt
+│   │   │       ├── shift_approved.html
+│   │   │       ├── shift_approved.txt
+│   │   │       ├── shift_rejected.html
+│   │   │       └── shift_rejected.txt
+│   │   ├── __init__.py
+│   │   ├── admin.py
+│   │   ├── apps.py
+│   │   ├── models.py
+│   │   ├── serializers.py
+│   │   ├── tasks.py
+│   │   ├── tests.py
+│   │   ├── urls.py
+│   │   └── views.py
+│   └── users
+│       ├── migrations
+│       │   ├── __init__.py
+│       │   ├── 0001_initial.py
+│       │   └── 0002_emailverificationtoken_passwordresettoken.py
+│       ├── __init__.py
+│       ├── admin.py
+│       ├── apps.py
+│       ├── models.py
+│       ├── serializers.py
+│       ├── tests.py
+│       ├── urls.py
+│       └── views.py
+├── config
+│   ├── __init__.py
+│   ├── asgi.py
+│   ├── celery.py
+│   ├── settings.py
+│   ├── urls.py
+│   └── wsgi.py
+├── logs
+├── scripts
+│   ├── back_export.py
+│   └── back_export.txt
+├── .dockerignore
+├── .env.example
+├── docker-compose.yml
+├── Dockerfile
+├── manage.py
+├── project_structure.txt
+└── requirements.txt
+
+15 directories, 64 files
 ```
 
 # ==== requirements.txt ====
@@ -806,135 +892,6 @@ if __name__ == "__main__":
     main()
 ```
 
-# ==== scripts/entrypoint.sh ====
-
-```bash
-#!/bin/bash
-set -e
-
-echo "Starting ToteTaxi Backend..."
-
-# CRITICAL FIX: Unset docker-compose DB variables on Fly.io
-unset DB_HOST
-unset DB_NAME
-unset DB_USER
-unset DB_PASSWORD
-unset DB_PORT
-
-# Wait for database if DB_HOST is set (won't happen after unset)
-if [ -n "$DB_HOST" ]; then
-    echo "Waiting for postgres at $DB_HOST:${DB_PORT:-5432}..."
-    while ! pg_isready -h "$DB_HOST" -p "${DB_PORT:-5432}" -U "${DB_USER:-postgres}"; do
-      sleep 1
-    done
-    echo "PostgreSQL is ready!"
-fi
-
-# Run migrations
-echo "Running database migrations..."
-python manage.py migrate --no-input
-
-# Collect static files (in case not done in Dockerfile)
-echo "Collecting static files..."
-python manage.py collectstatic --no-input --clear || true
-
-# Create cache table if needed
-python manage.py createcachetable || true
-
-# Create superuser if specified (optional)
-if [ -n "$DJANGO_SUPERUSER_EMAIL" ] && [ -n "$DJANGO_SUPERUSER_PASSWORD" ]; then
-    echo "Creating superuser..."
-    python manage.py shell -c "
-from django.contrib.auth import get_user_model
-User = get_user_model()
-if not User.objects.filter(email='$DJANGO_SUPERUSER_EMAIL').exists():
-    User.objects.create_superuser('$DJANGO_SUPERUSER_EMAIL', '$DJANGO_SUPERUSER_EMAIL', '$DJANGO_SUPERUSER_PASSWORD')
-    print('Superuser created')
-else:
-    print('Superuser already exists')
-" || true
-fi
-
-echo "Starting application..."
-exec "$@"
-```
-
-# ==== scripts/validate_ses_setup.py ====
-
-```python
-# backend/scripts/validate_ses_setup.py
-"""
-Validate SES setup for production
-Run locally: docker-compose exec web python manage.py shell < scripts/validate_ses_setup.py
-Run on Fly.io: fly ssh console -a totetaxi-backend -C "python manage.py shell < scripts/validate_ses_setup.py"
-"""
-import sys
-from django.core.mail import send_mail
-from django.conf import settings
-
-print("🔍 Validating SES Configuration...")
-print(f"EMAIL_BACKEND: {settings.EMAIL_BACKEND}")
-print(f"EMAIL_HOST: {settings.EMAIL_HOST}")
-print(f"EMAIL_PORT: {settings.EMAIL_PORT}")
-print(f"EMAIL_USE_TLS: {settings.EMAIL_USE_TLS}")
-print(f"DEFAULT_FROM_EMAIL: {settings.DEFAULT_FROM_EMAIL}")
-
-# Check if using SES in production
-if 'ses' not in settings.EMAIL_BACKEND.lower() and not settings.DEBUG:
-    print("⚠️  WARNING: Not using SES backend in production!")
-    print(f"Current backend: {settings.EMAIL_BACKEND}")
-    sys.exit(1)
-
-# In local dev, skip SES validation
-if settings.DEBUG and 'console' in settings.EMAIL_BACKEND.lower():
-    print("ℹ️  Running in DEBUG mode with console backend - SES validation skipped")
-    print("✅ Email configuration is correct for local development")
-    sys.exit(0)
-
-print("\n📧 Sending test email to mnraynor90@gmail.com...")
-try:
-    send_mail(
-        subject='ToteTaxi SES Test - Production Email Validation',
-        message='''This is a test email from ToteTaxi to validate SES setup.
-
-If you received this email, your SES configuration is working correctly!
-
-Test Details:
-- Backend: {backend}
-- From: {from_email}
-- Host: {host}
-- Port: {port}
-
-Next steps:
-1. Check AWS SES dashboard for delivery metrics
-2. Verify email templates are rendering correctly
-3. Test all email types (welcome, verification, password reset, bookings)
-
-ToteTaxi Backend Team
-'''.format(
-            backend=settings.EMAIL_BACKEND,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            host=settings.EMAIL_HOST,
-            port=settings.EMAIL_PORT
-        ),
-        from_email=settings.DEFAULT_FROM_EMAIL,
-        recipient_list=['mnraynor90@gmail.com'],
-        fail_silently=False,
-    )
-    print("✅ Test email sent successfully!")
-    print("📬 Check mnraynor90@gmail.com inbox to confirm delivery.")
-    print("\n✨ SES validation complete!")
-except Exception as e:
-    print(f"❌ Failed to send email: {e}")
-    print("\nTroubleshooting steps:")
-    print("1. Verify SES sender identity is verified in AWS console")
-    print("2. Check AWS credentials (ACCESS_KEY_ID and SECRET_ACCESS_KEY)")
-    print("3. Confirm DEFAULT_FROM_EMAIL matches verified identity")
-    print("4. Check SES is out of sandbox mode (or recipient is verified)")
-    print("5. Review CloudWatch logs for detailed error messages")
-    sys.exit(1)
-```
-
 # ========================= OTHER FILES =========================
 
 
@@ -1073,6 +1030,9 @@ from django.apps import AppConfig
 class CoverageConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'apps.coverage'
+    
+    def ready(self):
+        import apps.coverage.signals  # noqa
 ```
 
 # ==== apps/coverage/migrations/0001_initial.py ====
@@ -1247,12 +1207,182 @@ class WeeklyCoverage(models.Model):
         return self.exceeds_limit
 ```
 
+# ==== apps/coverage/signals.py ====
+
+```python
+from django.db.models.signals import post_save, post_delete
+from django.dispatch import receiver
+from apps.shifts.models import ShiftRequest
+from .utils import update_coverage_for_shift
+
+
+@receiver(post_save, sender=ShiftRequest)
+def shift_saved(sender, instance, **kwargs):
+    """
+    Update coverage whenever a shift is saved.
+    Only update for approved shifts.
+    """
+    if instance.status == 'APPROVED':
+        update_coverage_for_shift(instance)
+
+
+@receiver(post_delete, sender=ShiftRequest)
+def shift_deleted(sender, instance, **kwargs):
+    """
+    Update coverage when a shift is deleted.
+    """
+    if instance.status == 'APPROVED':
+        update_coverage_for_shift(instance)
+```
+
 # ==== apps/coverage/tests.py ====
 
 ```python
 from django.test import TestCase
 
 # Create your tests here.
+```
+
+# ==== apps/coverage/utils.py ====
+
+```python
+from datetime import time, timedelta
+from apps.shifts.models import ShiftRequest
+from .models import CriticalTimeCoverage, WeeklyCoverage
+
+
+def calculate_critical_coverage(date):
+    """
+    Calculate and update critical time coverage for a specific date.
+    
+    Critical Times:
+    - Morning: 6:00 AM - 9:00 AM (must cover full 3 hours)
+    - Evening: 9:00 PM - 10:00 PM (must cover full 1 hour)
+    
+    Args:
+        date: datetime.date object
+    
+    Returns:
+        CriticalTimeCoverage instance
+    """
+    # Get or create coverage record
+    coverage, created = CriticalTimeCoverage.objects.get_or_create(date=date)
+    
+    # Get all approved shifts for this date
+    shifts = ShiftRequest.objects.filter(
+        date=date,
+        status='APPROVED'
+    )
+    
+    # Reset coverage
+    coverage.morning_covered = False
+    coverage.evening_covered = False
+    coverage.morning_shift = None
+    coverage.evening_shift = None
+    
+    # Check each shift
+    for shift in shifts:
+        # Morning coverage: shift must start at or before 6 AM and end at or after 9 AM
+        if shift.start_time <= time(6, 0) and shift.end_time >= time(9, 0):
+            coverage.morning_covered = True
+            coverage.morning_shift = shift
+        
+        # Evening coverage: shift must start at or before 9 PM and end at or after 10 PM
+        if shift.start_time <= time(21, 0) and shift.end_time >= time(22, 0):
+            coverage.evening_covered = True
+            coverage.evening_shift = shift
+    
+    coverage.save()
+    return coverage
+
+
+def calculate_weekly_hours(pa, week_start_date):
+    """
+    Calculate and update weekly hours for a PA.
+    
+    Args:
+        pa: User instance (PA)
+        week_start_date: datetime.date (Monday of the week)
+    
+    Returns:
+        WeeklyCoverage instance
+    """
+    from apps.users.models import User
+    
+    # Ensure week_start_date is a Monday
+    if week_start_date.weekday() != 0:
+        week_start_date = week_start_date - timedelta(days=week_start_date.weekday())
+    
+    week_end_date = week_start_date + timedelta(days=6)
+    
+    # Get approved shifts for this PA in this week
+    shifts = ShiftRequest.objects.filter(
+        requested_by=pa,
+        status='APPROVED',
+        date__gte=week_start_date,
+        date__lte=week_end_date
+    )
+    
+    # Calculate total hours
+    total_hours = sum(shift.duration_hours for shift in shifts)
+    
+    # Get PA's max hours per week
+    max_hours = 40  # Default
+    if hasattr(pa, 'pa_profile'):
+        max_hours = pa.pa_profile.max_hours_per_week
+    
+    # Get schedule period (if any shift exists)
+    schedule_period = None
+    if shifts.exists():
+        schedule_period = shifts.first().schedule_period
+    
+    # Create or update weekly coverage
+    if schedule_period:
+        coverage, created = WeeklyCoverage.objects.get_or_create(
+            schedule_period=schedule_period,
+            pa=pa,
+            week_start_date=week_start_date,
+            defaults={'total_hours': total_hours}
+        )
+        
+        if not created:
+            coverage.total_hours = total_hours
+        
+        # Check if exceeds limit
+        coverage.check_exceeds_limit(max_hours)
+        coverage.save()
+        
+        return coverage
+    
+    return None
+
+
+def get_monday_of_week(date):
+    """
+    Get the Monday of the week for a given date.
+    
+    Args:
+        date: datetime.date
+    
+    Returns:
+        datetime.date (Monday)
+    """
+    return date - timedelta(days=date.weekday())
+
+
+def update_coverage_for_shift(shift):
+    """
+    Update both critical time coverage and weekly hours when a shift changes.
+    
+    Args:
+        shift: ShiftRequest instance
+    """
+    # Update critical time coverage
+    calculate_critical_coverage(shift.date)
+    
+    # Update weekly hours
+    week_start = get_monday_of_week(shift.date)
+    calculate_weekly_hours(shift.requested_by, week_start)
 ```
 
 # ==== apps/coverage/views.py ====
@@ -1722,6 +1852,7 @@ urlpatterns = [
     path('calendar/week/<int:year>/<int:week>/', WeekViewAPI.as_view(), name='week-view'),
     path('calendar/day/<str:date>/', DayViewAPI.as_view(), name='day-view'),
 ]
+
 ```
 
 # ==== apps/schedules/utils.py ====
@@ -1999,12 +2130,12 @@ class SchedulePeriodViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         """Set created_by to current user"""
         serializer.save(created_by=self.request.user)
-    
+        
     @action(detail=True, methods=['post'])
     def finalize(self, request, pk=None):
         """
         Finalize a schedule period (admin only)
-        Validates that all critical times are covered before allowing finalization
+        Shows coverage warnings but does NOT block finalization.
         """
         period = self.get_object()
         
@@ -2014,19 +2145,66 @@ class SchedulePeriodViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # TODO: Validate critical time coverage (Task 6.4)
-        # For now, just finalize
+        # Check coverage and gather warnings (but don't block)
+        from apps.coverage.models import CriticalTimeCoverage
+        from datetime import timedelta
+        
+        coverage_warnings = []
+        current_date = period.start_date
+        
+        while current_date <= period.end_date:
+            try:
+                coverage = CriticalTimeCoverage.objects.get(date=current_date)
+                if not coverage.morning_covered:
+                    coverage_warnings.append(f"{current_date.strftime('%b %d')}: Morning (6-9 AM) not covered")
+                if not coverage.evening_covered:
+                    coverage_warnings.append(f"{current_date.strftime('%b %d')}: Evening (9-10 PM) not covered")
+            except CriticalTimeCoverage.DoesNotExist:
+                coverage_warnings.append(f"{current_date.strftime('%b %d')}: No coverage at all")
+            
+            current_date += timedelta(days=1)
+        
+        # Finalize regardless of coverage
         period.status = 'FINALIZED'
         period.save()
         
-        # TODO: Auto-reject all pending requests (Task 6.4)
-        # TODO: Send finalized notification email to all PAs (Task 6.4)
+        # Auto-reject all pending requests
+        from apps.shifts.models import ShiftRequest
+        pending = ShiftRequest.objects.filter(
+            schedule_period=period,
+            status='PENDING'
+        )
+        rejected_count = pending.count()
+        pending.update(
+            status='REJECTED',
+            rejected_reason='Schedule period has been finalized'
+        )
         
-        return Response({
-            'message': 'Schedule period finalized successfully.',
-            'period': SchedulePeriodSerializer(period).data
-        }, status=status.HTTP_200_OK)
-
+        # Send finalized notification email to all PAs
+        from apps.users.models import User
+        pa_emails = list(User.objects.filter(role='PA', is_active=True).values_list('email', flat=True))
+        
+        # TODO: Send finalized email (Phase 6.4)
+        # send_period_finalized_email.delay(period.id, pa_emails)
+        
+        # Broadcast WebSocket event
+        from apps.schedules.websocket_utils import broadcast_period_finalized
+        broadcast_period_finalized(period, message=f'{period.name} has been finalized')
+        
+        response_data = {
+            'message': f'Schedule period "{period.name}" finalized successfully.',
+            'period': SchedulePeriodSerializer(period).data,
+            'rejected_requests': rejected_count,
+        }
+        
+        # Include coverage warnings if any exist
+        if coverage_warnings:
+            response_data['coverage_warnings'] = coverage_warnings
+            response_data['warning_count'] = len(coverage_warnings)
+        else:
+            response_data['coverage_status'] = 'All critical times covered! ✅'
+        
+        return Response(response_data, status=status.HTTP_200_OK)
 
 class MonthViewAPI(APIView):
     """
@@ -3410,6 +3588,103 @@ from django.apps import AppConfig
 class UsersConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'apps.users'
+    
+    def ready(self):
+        import apps.users.signals
+```
+
+# ==== apps/users/emails.py ====
+
+```python
+from django.core.mail import send_mail
+from django.template.loader import render_to_string
+from django.conf import settings
+from celery import shared_task
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+@shared_task(bind=True, max_retries=3)
+def send_verification_email(self, user_id, token):
+    """
+    Send email verification link to new user.
+    """
+    try:
+        from apps.users.models import User
+        
+        user = User.objects.get(id=user_id)
+        
+        # Build verification URL
+        verification_url = f"{settings.FRONTEND_URL}/verify-email?token={token}"
+        
+        # Context for email templates
+        context = {
+            'user_name': user.get_full_name() or user.email,
+            'verification_url': verification_url,
+        }
+        
+        # Render HTML and text versions
+        html_message = render_to_string('emails/verification.html', context)
+        text_message = render_to_string('emails/verification.txt', context)
+        
+        # Send email
+        send_mail(
+            subject='✉️ Verify Your Email - PA Scheduling System',
+            message=text_message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[user.email],
+            html_message=html_message,
+            fail_silently=False,
+        )
+        
+        logger.info(f'Verification email sent to {user.email}')
+        return f'Email sent to {user.email}'
+        
+    except Exception as e:
+        logger.error(f'Failed to send verification email: {e}')
+        raise self.retry(exc=e, countdown=60 * (2 ** self.request.retries))
+
+
+@shared_task(bind=True, max_retries=3)
+def send_password_reset_email(self, user_id, token):
+    """
+    Send password reset link to user.
+    """
+    try:
+        from apps.users.models import User
+        
+        user = User.objects.get(id=user_id)
+        
+        # Build reset URL
+        reset_url = f"{settings.FRONTEND_URL}/reset-password?token={token}"
+        
+        # Context for email templates
+        context = {
+            'user_name': user.get_full_name() or user.email,
+            'reset_url': reset_url,
+        }
+        
+        # Render HTML and text versions
+        html_message = render_to_string('emails/password_reset.html', context)
+        text_message = render_to_string('emails/password_reset.txt', context)
+        
+        # Send email
+        send_mail(
+            subject='🔐 Password Reset - PA Scheduling System',
+            message=text_message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[user.email],
+            html_message=html_message,
+            fail_silently=False,
+        )
+        
+        logger.info(f'Password reset email sent to {user.email}')
+        return f'Email sent to {user.email}'
+        
+    except Exception as e:
+        logger.error(f'Failed to send password reset email: {e}')
+        raise self.retry(exc=e, countdown=60 * (2 ** self.request.retries))
 ```
 
 # ==== apps/users/migrations/0001_initial.py ====
@@ -3515,6 +3790,69 @@ class Migration(migrations.Migration):
     ]
 ```
 
+# ==== apps/users/migrations/0003_paprofile_paschedulestats.py ====
+
+```python
+# Generated by Django 5.2.7 on 2025-11-02 17:24
+
+import django.db.models.deletion
+from django.conf import settings
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ('users', '0002_emailverificationtoken_passwordresettoken'),
+    ]
+
+    operations = [
+        migrations.CreateModel(
+            name='PAProfile',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('preferred_start_time', models.TimeField(blank=True, help_text='Preferred shift start time (e.g., 08:00)', null=True)),
+                ('preferred_end_time', models.TimeField(blank=True, help_text='Preferred shift end time (e.g., 16:00)', null=True)),
+                ('preferred_days', models.JSONField(blank=True, default=list, help_text='List of preferred days: ["monday", "tuesday", ...]')),
+                ('max_hours_per_week', models.IntegerField(default=40, help_text='Maximum hours this PA can work per week')),
+                ('notes', models.TextField(blank=True, help_text='Internal notes about this PA (admin only)')),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
+                ('user', models.OneToOneField(limit_choices_to={'role': 'PA'}, on_delete=django.db.models.deletion.CASCADE, related_name='pa_profile', to=settings.AUTH_USER_MODEL)),
+            ],
+            options={
+                'verbose_name': 'PA Profile',
+                'verbose_name_plural': 'PA Profiles',
+                'db_table': 'pa_profiles',
+            },
+        ),
+        migrations.CreateModel(
+            name='PAScheduleStats',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('total_shifts_worked', models.IntegerField(default=0)),
+                ('total_hours_worked', models.DecimalField(decimal_places=2, default=0, max_digits=8)),
+                ('average_hours_per_week', models.DecimalField(decimal_places=2, default=0, max_digits=5)),
+                ('most_common_days', models.JSONField(blank=True, default=dict, help_text='{"monday": 15, "wednesday": 12, ...}')),
+                ('most_common_start_time', models.TimeField(blank=True, null=True)),
+                ('most_common_shift_length', models.DecimalField(blank=True, decimal_places=2, help_text='Average shift duration in hours', max_digits=4, null=True)),
+                ('preferred_shift_pattern', models.CharField(blank=True, choices=[('morning', 'Morning (6-9 AM)'), ('evening', 'Evening (9-10 PM)'), ('full_day', 'Full Day'), ('mixed', 'Mixed')], max_length=20)),
+                ('reliability_score', models.DecimalField(decimal_places=2, default=100.0, help_text='Percentage of completed shifts without cancellation (0-100)', max_digits=5)),
+                ('typical_request_timing', models.IntegerField(blank=True, help_text='Average days before shift date that PA typically requests', null=True)),
+                ('consecutive_days_preference', models.IntegerField(blank=True, help_text='Average number of consecutive days worked', null=True)),
+                ('last_worked_date', models.DateField(blank=True, null=True)),
+                ('last_calculated', models.DateTimeField(auto_now=True)),
+                ('pa', models.OneToOneField(limit_choices_to={'role': 'PA'}, on_delete=django.db.models.deletion.CASCADE, related_name='schedule_stats', to=settings.AUTH_USER_MODEL)),
+            ],
+            options={
+                'verbose_name': 'PA Schedule Statistics',
+                'verbose_name_plural': 'PA Schedule Statistics',
+                'db_table': 'pa_schedule_stats',
+            },
+        ),
+    ]
+```
+
 # ==== apps/users/migrations/__init__.py ====
 
 ```python
@@ -3614,6 +3952,138 @@ class PasswordResetToken(models.Model):
     
     def __str__(self):
         return f"Password reset token for {self.user.email}"
+
+
+class PAProfile(models.Model):
+    """
+    Extended profile for PA users with preferences and scheduling settings.
+    One-to-one relationship with User where role='PA'.
+    """
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name='pa_profile',
+        limit_choices_to={'role': 'PA'}
+    )
+    
+    # Preferred working hours
+    preferred_start_time = models.TimeField(
+        null=True,
+        blank=True,
+        help_text="Preferred shift start time (e.g., 08:00)"
+    )
+    preferred_end_time = models.TimeField(
+        null=True,
+        blank=True,
+        help_text="Preferred shift end time (e.g., 16:00)"
+    )
+    
+    # Preferred working days (stored as JSON array)
+    preferred_days = models.JSONField(
+        default=list,
+        blank=True,
+        help_text='List of preferred days: ["monday", "tuesday", ...]'
+    )
+    
+    # Weekly hour limit
+    max_hours_per_week = models.IntegerField(
+        default=40,
+        help_text="Maximum hours this PA can work per week"
+    )
+    
+    # Admin notes about this PA
+    notes = models.TextField(
+        blank=True,
+        help_text="Internal notes about this PA (admin only)"
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'pa_profiles'
+        verbose_name = 'PA Profile'
+        verbose_name_plural = 'PA Profiles'
+    
+    def __str__(self):
+        return f"Profile for {self.user.get_full_name()}"
+
+
+class PAScheduleStats(models.Model):
+    """
+    Historical pattern tracking for each PA.
+    Used by AI for predictive scheduling and conflict resolution.
+    """
+    pa = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name='schedule_stats',
+        limit_choices_to={'role': 'PA'}
+    )
+    
+    # Lifetime statistics
+    total_shifts_worked = models.IntegerField(default=0)
+    total_hours_worked = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    average_hours_per_week = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    
+    # Pattern data (stored as JSON)
+    most_common_days = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text='{"monday": 15, "wednesday": 12, ...}'
+    )
+    most_common_start_time = models.TimeField(null=True, blank=True)
+    most_common_shift_length = models.DecimalField(
+        max_digits=4,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Average shift duration in hours"
+    )
+    
+    # Behavioral patterns
+    preferred_shift_pattern = models.CharField(
+        max_length=20,
+        blank=True,
+        choices=[
+            ('morning', 'Morning (6-9 AM)'),
+            ('evening', 'Evening (9-10 PM)'),
+            ('full_day', 'Full Day'),
+            ('mixed', 'Mixed'),
+        ]
+    )
+    
+    # Reliability metrics
+    reliability_score = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=100.0,
+        help_text="Percentage of completed shifts without cancellation (0-100)"
+    )
+    
+    # Request timing
+    typical_request_timing = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Average days before shift date that PA typically requests"
+    )
+    consecutive_days_preference = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Average number of consecutive days worked"
+    )
+    
+    # Last activity
+    last_worked_date = models.DateField(null=True, blank=True)
+    last_calculated = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'pa_schedule_stats'
+        verbose_name = 'PA Schedule Statistics'
+        verbose_name_plural = 'PA Schedule Statistics'
+    
+    def __str__(self):
+        return f"Stats for {self.pa.get_full_name()}"
 ```
 
 # ==== apps/users/serializers.py ====
@@ -3780,6 +4250,117 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
         return value
 ```
 
+# ==== apps/users/signals.py ====
+
+```python
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+from .models import User, PAProfile, PAScheduleStats
+
+
+@receiver(post_save, sender=User)
+def create_pa_profile(sender, instance, created, **kwargs):
+    """
+    Automatically create PAProfile and PAScheduleStats when a PA user is created.
+    """
+    if created and instance.role == 'PA':
+        PAProfile.objects.get_or_create(user=instance)
+        PAScheduleStats.objects.get_or_create(pa=instance)
+
+
+@receiver(post_save, sender=User)
+def save_pa_profile(sender, instance, **kwargs):
+    """
+    Save PAProfile when User is saved (if it exists).
+    """
+    if instance.role == 'PA' and hasattr(instance, 'pa_profile'):
+        instance.pa_profile.save()
+```
+
+# ==== apps/users/tasks.py ====
+
+```python
+from celery import shared_task
+from .utils import calculate_pa_patterns
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+@shared_task
+def calculate_all_pa_patterns():
+    """
+    Calculate patterns for all PA users.
+    Scheduled to run weekly (Monday 2 AM).
+    """
+    from apps.users.models import User
+    
+    pa_users = User.objects.filter(role='PA', is_active=True)
+    
+    success_count = 0
+    error_count = 0
+    
+    for pa in pa_users:
+        try:
+            calculate_pa_patterns(pa.id)
+            success_count += 1
+            logger.info(f'Successfully calculated patterns for PA {pa.email}')
+        except Exception as e:
+            error_count += 1
+            logger.error(f'Failed to calculate patterns for PA {pa.email}: {e}')
+    
+    logger.info(f'Pattern calculation complete: {success_count} success, {error_count} errors')
+    return f'Calculated patterns for {success_count}/{pa_users.count()} PAs'
+```
+
+# ==== apps/users/templates/emails/password_reset.txt ====
+
+```
+
+🔐 PASSWORD RESET REQUEST
+
+Hi {{ user_name }},
+
+We received a request to reset your password for your PA Scheduling System account.
+
+Password Reset Link:
+{{ reset_url }}
+
+This link will expire in 24 hours.
+
+⚠️ SECURITY NOTICE:
+If you didn't request a password reset, please ignore this email. Your password will remain unchanged.
+
+Best regards,
+PA Scheduling System
+
+---
+This is an automated message. Please do not reply to this email.
+```
+
+# ==== apps/users/templates/emails/verification.txt ====
+
+```
+✉️ VERIFY YOUR EMAIL
+
+Hi {{ user_name }},
+
+Welcome to PA Scheduling System! Please verify your email address to complete your registration.
+
+Verification Link:
+{{ verification_url }}
+
+This link will expire in 7 days.
+
+If you didn't create an account, you can safely ignore this email.
+
+Best regards,
+PA Scheduling System
+
+---
+This is an automated message. Please do not reply to this email.
+```
+
 # ==== apps/users/tests.py ====
 
 ```python
@@ -3822,6 +4403,154 @@ urlpatterns = [
 ]
 ```
 
+# ==== apps/users/utils.py ====
+
+```python
+from datetime import timedelta
+from django.db.models import Count, Avg, Sum
+from django.utils import timezone
+from apps.shifts.models import ShiftRequest
+from .models import PAScheduleStats
+
+
+def calculate_pa_patterns(pa_id):
+    """
+    Calculate and update scheduling patterns for a PA user.
+    Analyzes last 12 weeks of shift data.
+    
+    Args:
+        pa_id: User ID of the PA
+    
+    Returns:
+        PAScheduleStats instance
+    """
+    from apps.users.models import User, PAScheduleStats
+    
+    try:
+        pa = User.objects.get(id=pa_id, role='PA')
+    except User.DoesNotExist:
+        return None
+    
+    # Get or create stats object
+    stats, created = PAScheduleStats.objects.get_or_create(pa=pa)
+    
+    # Calculate date range (last 12 weeks)
+    end_date = timezone.now().date()
+    start_date = end_date - timedelta(weeks=12)
+    
+    # Get all approved shifts in date range
+    shifts = ShiftRequest.objects.filter(
+        requested_by=pa,
+        status='APPROVED',
+        date__gte=start_date,
+        date__lte=end_date
+    )
+    
+    # Lifetime statistics
+    all_shifts = ShiftRequest.objects.filter(
+        requested_by=pa,
+        status='APPROVED'
+    )
+    
+    stats.total_shifts_worked = all_shifts.count()
+    stats.total_hours_worked = all_shifts.aggregate(
+        total=Sum('duration_hours')
+    )['total'] or 0
+    
+    # Average hours per week (last 12 weeks)
+    if shifts.exists():
+        total_hours_12_weeks = shifts.aggregate(
+            total=Sum('duration_hours')
+        )['total'] or 0
+        stats.average_hours_per_week = total_hours_12_weeks / 12
+    
+    # Most common days
+    day_counts = {}
+    for shift in shifts:
+        day_name = shift.date.strftime('%A').lower()
+        day_counts[day_name] = day_counts.get(day_name, 0) + 1
+    stats.most_common_days = day_counts
+    
+    # Most common start time
+    if shifts.exists():
+        start_times = shifts.values('start_time').annotate(
+            count=Count('start_time')
+        ).order_by('-count').first()
+        
+        if start_times:
+            stats.most_common_start_time = start_times['start_time']
+    
+    # Most common shift length
+    if shifts.exists():
+        avg_length = shifts.aggregate(
+            avg_duration=Avg('duration_hours')
+        )['avg_duration']
+        stats.most_common_shift_length = avg_length
+    
+    # Preferred shift pattern (morning/evening/full_day/mixed)
+    morning_shifts = shifts.filter(start_time__hour__lt=12).count()
+    evening_shifts = shifts.filter(start_time__hour__gte=18).count()
+    total_shifts_counted = shifts.count()
+    
+    if total_shifts_counted > 0:
+        morning_ratio = morning_shifts / total_shifts_counted
+        evening_ratio = evening_shifts / total_shifts_counted
+        
+        if morning_ratio > 0.6:
+            stats.preferred_shift_pattern = 'morning'
+        elif evening_ratio > 0.6:
+            stats.preferred_shift_pattern = 'evening'
+        elif morning_ratio > 0.3 and evening_ratio > 0.3:
+            stats.preferred_shift_pattern = 'full_day'
+        else:
+            stats.preferred_shift_pattern = 'mixed'
+    
+    # Reliability score (% of approved shifts not cancelled)
+    total_requested = ShiftRequest.objects.filter(requested_by=pa).count()
+    cancelled = ShiftRequest.objects.filter(
+        requested_by=pa,
+        status='CANCELLED'
+    ).count()
+    
+    if total_requested > 0:
+        stats.reliability_score = ((total_requested - cancelled) / total_requested) * 100
+    
+    # Typical request timing (days before shift)
+    if shifts.exists():
+        timing_diffs = []
+        for shift in shifts[:50]:  # Sample last 50 shifts
+            days_before = (shift.date - shift.created_at.date()).days
+            if days_before >= 0:
+                timing_diffs.append(days_before)
+        
+        if timing_diffs:
+            stats.typical_request_timing = sum(timing_diffs) // len(timing_diffs)
+    
+    # Consecutive days preference
+    if shifts.exists():
+        dates = sorted([shift.date for shift in shifts])
+        consecutive_counts = []
+        current_streak = 1
+        
+        for i in range(1, len(dates)):
+            if (dates[i] - dates[i-1]).days == 1:
+                current_streak += 1
+            else:
+                if current_streak > 1:
+                    consecutive_counts.append(current_streak)
+                current_streak = 1
+        
+        if consecutive_counts:
+            stats.consecutive_days_preference = sum(consecutive_counts) // len(consecutive_counts)
+    
+    # Last worked date
+    if all_shifts.exists():
+        stats.last_worked_date = all_shifts.latest('date').date
+    
+    stats.save()
+    return stats
+```
+
 # ==== apps/users/views.py ====
 
 ```python
@@ -3842,6 +4571,7 @@ from .serializers import (
     UserProfileUpdateSerializer
 )
 from .models import EmailVerificationToken, PasswordResetToken
+from .emails import send_verification_email, send_password_reset_email
 
 User = get_user_model()
 
@@ -3863,13 +4593,12 @@ class RegisterView(generics.CreateAPIView):
         # Create verification token
         token = EmailVerificationToken.objects.create(user=user)
         
-        # TODO: Send verification email (Task 1.3)
-        # send_verification_email(user, token)
+        # Send verification email (async with Celery)
+        send_verification_email.delay(user.id, str(token.token))
         
         return Response({
             'message': 'Registration successful. Please check your email to verify your account.',
             'user': UserSerializer(user).data,
-            'verification_token': str(token.token)  # Remove in production
         }, status=status.HTTP_201_CREATED)
 
 
@@ -4007,15 +4736,14 @@ class PasswordResetRequestView(APIView):
             # Create reset token
             token = PasswordResetToken.objects.create(user=user)
             
-            # TODO: Send reset email (Task 1.3)
-            # send_password_reset_email(user, token)
+            # Send reset email (async with Celery)
+            send_password_reset_email.delay(user.id, str(token.token))
             
             return Response({
                 'message': 'Password reset email sent. Please check your email.',
-                'reset_token': str(token.token)  # Remove in production
             }, status=status.HTTP_200_OK)
         except User.DoesNotExist:
-            # Don't reveal if email exists
+            # Don't reveal if email exists (security best practice)
             return Response({
                 'message': 'If that email exists, a password reset link has been sent.'
             }, status=status.HTTP_200_OK)
