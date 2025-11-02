@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { schedulesAPI } from '@/lib/schedules-api';
@@ -17,6 +17,9 @@ export default function NewPeriodPage() {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const startDateRef = useRef<HTMLInputElement>(null);
+  const endDateRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!authLoading && !isAdmin) {
@@ -153,33 +156,45 @@ export default function NewPeriodPage() {
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                 <div>
                   <label htmlFor="start_date" className="block text-sm font-semibold text-gray-700 mb-2">
-                    Start Date *
+                    Start Date * <span className="text-xs font-normal text-gray-500">(Click to select)</span>
                   </label>
-                  <input
-                    type="date"
-                    id="start_date"
-                    required
-                    value={formData.start_date}
-                    onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
-                    className="block w-full border-2 border-gray-300 rounded-lg shadow-sm py-3 px-4 text-gray-900 font-bold text-base focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all"
-                    style={{ colorScheme: 'light' }}
-                  />
+                  <div 
+                    onClick={() => startDateRef.current?.showPicker()}
+                    className="relative cursor-pointer"
+                  >
+                    <input
+                      ref={startDateRef}
+                      type="date"
+                      id="start_date"
+                      required
+                      value={formData.start_date}
+                      onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+                      className="block w-full border-2 border-gray-300 rounded-lg shadow-sm py-4 px-4 text-gray-900 font-bold text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all"
+                      style={{ colorScheme: 'light' }}
+                    />
+                  </div>
                 </div>
 
                 <div>
                   <label htmlFor="end_date" className="block text-sm font-semibold text-gray-700 mb-2">
-                    End Date *
+                    End Date * <span className="text-xs font-normal text-gray-500">(Click to select)</span>
                   </label>
-                  <input
-                    type="date"
-                    id="end_date"
-                    required
-                    value={formData.end_date}
-                    onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
-                    min={formData.start_date}
-                    className="block w-full border-2 border-gray-300 rounded-lg shadow-sm py-3 px-4 text-gray-900 font-bold text-base focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all"
-                    style={{ colorScheme: 'light' }}
-                  />
+                  <div 
+                    onClick={() => endDateRef.current?.showPicker()}
+                    className="relative cursor-pointer"
+                  >
+                    <input
+                      ref={endDateRef}
+                      type="date"
+                      id="end_date"
+                      required
+                      value={formData.end_date}
+                      onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
+                      min={formData.start_date}
+                      className="block w-full border-2 border-gray-300 rounded-lg shadow-sm py-4 px-4 text-gray-900 font-bold text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all"
+                      style={{ colorScheme: 'light' }}
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -199,6 +214,9 @@ export default function NewPeriodPage() {
                   <option value="LOCKED">LOCKED - No new requests allowed</option>
                   <option value="FINALIZED">FINALIZED - Schedule complete</option>
                 </select>
+                <p className="mt-2 text-sm text-gray-500">
+                  💡 Tip: Start with OPEN so PAs can submit shift requests
+                </p>
               </div>
 
               {/* Submit Button */}
