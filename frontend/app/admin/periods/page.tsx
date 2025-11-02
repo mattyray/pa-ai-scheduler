@@ -30,10 +30,21 @@ export default function SchedulePeriodsPage() {
     try {
       setLoading(true);
       const response = await schedulesAPI.listPeriods();
-      setPeriods(response.data);
+      
+      // Handle both paginated and non-paginated responses
+      const periodsData = response.data.results || response.data;
+      
+      // Ensure it's an array
+      if (Array.isArray(periodsData)) {
+        setPeriods(periodsData);
+      } else {
+        console.error('Unexpected response format:', response.data);
+        setPeriods([]);
+      }
     } catch (err: any) {
       console.error('Failed to load periods:', err);
       setError('Failed to load schedule periods');
+      setPeriods([]); // Set to empty array on error
     } finally {
       setLoading(false);
     }
@@ -114,9 +125,14 @@ export default function SchedulePeriodsPage() {
             </div>
           )}
 
+          {/* Debug Info */}
+          <div className="mb-4 text-xs text-gray-500">
+            Total periods: {periods.length}
+          </div>
+
           {/* Periods List */}
           <div className="bg-white shadow overflow-hidden sm:rounded-md">
-            {periods.length === 0 ? (
+            {!Array.isArray(periods) || periods.length === 0 ? (
               <div className="text-center py-12">
                 <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -217,11 +233,32 @@ function CreatePeriodModal({ onClose, onSuccess }: { onClose: () => void; onSucc
     setLoading(true);
 
     try {
-      await schedulesAPI.createPeriod(formData);
+      const response = await schedulesAPI.createPeriod(formData);
+      console.log('Period created:', response.data);
       onSuccess();
     } catch (err: any) {
       console.error('Failed to create period:', err);
-      setError(err.response?.data?.error || 'Failed to create period');
+      console.error('Error response:', err.response?.data);
+      
+      // Handle validation errors
+      if (err.response?.data) {
+        const errorData = err.response.data;
+        if (typeof errorData === 'object') {
+          const errorMessages = Object.entries(errorData)
+            .map(([field, messages]) => {
+              if (Array.isArray(messages)) {
+                return `${field}: ${messages.join(', ')}`;
+              }
+              return `${field}: ${messages}`;
+            })
+            .join('\n');
+          setError(errorMessages);
+        } else {
+          setError(String(errorData));
+        }
+      } else {
+        setError('Failed to create period. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -253,7 +290,7 @@ function CreatePeriodModal({ onClose, onSuccess }: { onClose: () => void; onSucc
 
               {error && (
                 <div className="mb-4 rounded-md bg-red-50 p-4">
-                  <p className="text-sm text-red-800">{error}</p>
+                  <p className="text-sm text-red-800 whitespace-pre-line">{error}</p>
                 </div>
               )}
 
