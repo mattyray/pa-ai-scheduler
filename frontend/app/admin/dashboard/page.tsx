@@ -199,7 +199,10 @@ export default function AdminDashboard() {
             </button>
 
             {/* Create Period */}
-            <button className="bg-white overflow-hidden shadow rounded-lg hover:shadow-md transition-shadow">
+            <button 
+              onClick={() => router.push('/admin/periods')}
+              className="bg-white overflow-hidden shadow rounded-lg hover:shadow-md transition-shadow"
+            >
               <div className="px-4 py-5 sm:p-6 text-left">
                 <div className="flex items-center">
                   <div className="flex-shrink-0 bg-green-500 rounded-md p-3">
@@ -208,14 +211,17 @@ export default function AdminDashboard() {
                     </svg>
                   </div>
                   <div className="ml-5">
-                    <h4 className="text-lg font-medium text-gray-900">Create Period</h4>
+                    <h4 className="text-lg font-medium text-gray-900">Manage Periods</h4>
                   </div>
                 </div>
               </div>
             </button>
 
             {/* View Schedule */}
-            <button className="bg-white overflow-hidden shadow rounded-lg hover:shadow-md transition-shadow">
+            <button 
+              onClick={() => router.push('/schedule')}
+              className="bg-white overflow-hidden shadow rounded-lg hover:shadow-md transition-shadow"
+            >
               <div className="px-4 py-5 sm:p-6 text-left">
                 <div className="flex items-center">
                   <div className="flex-shrink-0 bg-purple-500 rounded-md p-3">
