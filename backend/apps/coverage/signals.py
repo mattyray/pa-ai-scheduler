@@ -20,4 +20,4 @@ def shift_deleted(sender, instance, **kwargs):
     Update coverage when a shift is deleted.
     """
     if instance.status == 'APPROVED':
-        update_coverage_for_shift(instance),
+        update_coverage_for_shift(instance)
