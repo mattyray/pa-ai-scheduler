@@ -59,8 +59,18 @@ export default function SuggestShiftModal({
   const loadPAs = async () => {
     try {
       const response = await api.get('/api/auth/users/');
-      const allUsers = response.data.results || response.data;
+      console.log('PA API Response:', response.data);
+      
+      // Handle both array and paginated response
+      let allUsers = [];
+      if (Array.isArray(response.data)) {
+        allUsers = response.data;
+      } else if (response.data.results && Array.isArray(response.data.results)) {
+        allUsers = response.data.results;
+      }
+      
       const paUsers = allUsers.filter((u: any) => u.role === 'PA');
+      console.log('Filtered PAs:', paUsers);
       setPAs(paUsers);
     } catch (err) {
       console.error('Failed to load PAs:', err);
@@ -70,14 +80,21 @@ export default function SuggestShiftModal({
   const loadPeriods = async () => {
     try {
       const response = await schedulesAPI.listPeriods();
-      const periodsData = response.data.results || response.data;
-      setPeriods(periodsData.filter((p: any) => p.status === 'OPEN' || p.status === 'LOCKED'));
+      console.log('Periods API Response:', response.data);
       
-      if (periodsData.length > 0 && !formData.schedule_period) {
-        const openPeriod = periodsData.find((p: any) => p.status === 'OPEN');
+      // schedulesAPI.listPeriods() returns data directly, not paginated
+      const periodsData = response.data;
+      const filteredPeriods = Array.isArray(periodsData) 
+        ? periodsData.filter((p: any) => p.status === 'OPEN' || p.status === 'LOCKED')
+        : [];
+      
+      setPeriods(filteredPeriods);
+      
+      if (filteredPeriods.length > 0 && !formData.schedule_period) {
+        const openPeriod = filteredPeriods.find((p: any) => p.status === 'OPEN');
         setFormData(prev => ({
           ...prev,
-          schedule_period: String(openPeriod?.id || periodsData[0].id),
+          schedule_period: String(openPeriod?.id || filteredPeriods[0].id),
         }));
       }
     } catch (err) {
@@ -140,11 +157,16 @@ export default function SuggestShiftModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
+    <div className="fixed inset-0 z-[9999] overflow-y-auto">
       <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-        <div className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={onClose} />
+        {/* Backdrop */}
+        <div 
+          className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity z-[9998]" 
+          onClick={onClose} 
+        />
 
-        <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+        {/* Modal Content */}
+        <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full relative z-[9999]">
           <form onSubmit={handleSubmit}>
             <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Suggest Shift to PA</h3>
@@ -164,7 +186,7 @@ export default function SuggestShiftModal({
                     required
                     value={formData.suggested_to}
                     onChange={(e) => setFormData({ ...formData, suggested_to: e.target.value })}
-                    className="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 bg-white focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                   >
                     <option value="">Choose a PA...</option>
                     {pas.map((pa) => (
@@ -173,6 +195,9 @@ export default function SuggestShiftModal({
                       </option>
                     ))}
                   </select>
+                  {pas.length === 0 && (
+                    <p className="mt-1 text-sm text-gray-500">Loading PAs...</p>
+                  )}
                 </div>
 
                 <div>
@@ -183,7 +208,7 @@ export default function SuggestShiftModal({
                     required
                     value={formData.schedule_period}
                     onChange={(e) => setFormData({ ...formData, schedule_period: e.target.value })}
-                    className="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 bg-white focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                   >
                     <option value="">Choose a period...</option>
                     {periods.map((period) => (
@@ -203,7 +228,7 @@ export default function SuggestShiftModal({
                     required
                     value={formData.date}
                     onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                    className="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 bg-white focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
 
@@ -217,7 +242,7 @@ export default function SuggestShiftModal({
                       required
                       value={formData.start_time}
                       onChange={(e) => setFormData({ ...formData, start_time: e.target.value })}
-                      className="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 bg-white focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                     />
                   </div>
                   <div>
@@ -229,7 +254,7 @@ export default function SuggestShiftModal({
                       required
                       value={formData.end_time}
                       onChange={(e) => setFormData({ ...formData, end_time: e.target.value })}
-                      className="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 bg-white focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                     />
                   </div>
                 </div>
@@ -247,7 +272,7 @@ export default function SuggestShiftModal({
                     onChange={(e) => setFormData({ ...formData, message: e.target.value })}
                     rows={3}
                     placeholder="Can you cover the morning routine?"
-                    className="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 bg-white focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
               </div>
