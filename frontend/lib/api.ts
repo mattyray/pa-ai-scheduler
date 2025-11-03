@@ -30,6 +30,12 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
+    // Handle 403 Forbidden - Don't logout, just reject
+    if (error.response?.status === 403) {
+      console.error('Access forbidden:', error.response?.data?.error || 'You do not have permission to perform this action');
+      return Promise.reject(error);
+    }
+
     // If 401 and we haven't tried to refresh yet
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;

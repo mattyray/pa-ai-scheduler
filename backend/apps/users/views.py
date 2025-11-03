@@ -249,3 +249,25 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
         if self.request.method == 'PATCH':
             return UserProfileUpdateSerializer
         return UserSerializer
+    
+class UserListView(generics.ListAPIView):
+    """
+    GET /api/auth/users/
+    List all users (admin only) or filtered by role
+    """
+    serializer_class = UserSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        queryset = User.objects.all().order_by('first_name', 'last_name')
+        
+        # Filter by role if provided
+        role = self.request.query_params.get('role', None)
+        if role:
+            queryset = queryset.filter(role=role)
+        
+        # Optional: Only admins can see all users, PAs only see other PAs
+        if self.request.user.role != 'ADMIN':
+            queryset = queryset.filter(role='PA')
+        
+        return queryset

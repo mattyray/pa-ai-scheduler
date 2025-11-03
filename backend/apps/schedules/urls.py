@@ -7,7 +7,8 @@ router.register(r'', SchedulePeriodViewSet, basename='schedule-period')
 
 urlpatterns = [
     path('', include(router.urls)),
-    path('calendar/month/<int:year>/<int:month>/', MonthViewAPI.as_view(), name='month-view'),
-    path('calendar/week/<int:year>/<int:week>/', WeekViewAPI.as_view(), name='week-view'),
-    path('calendar/day/<str:date>/', DayViewAPI.as_view(), name='day-view'),
+    # Calendar views
+    path('calendar/month/<int:year>/<int:month>/', MonthViewAPI.as_view(), name='calendar-month'),
+    path('calendar/week/<int:year>/<int:week>/', WeekViewAPI.as_view(), name='calendar-week'),
+    path('calendar/day/<str:date>/', DayViewAPI.as_view(), name='calendar-day'),
 ]
