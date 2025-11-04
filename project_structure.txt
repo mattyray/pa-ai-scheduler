@@ -29,7 +29,8 @@
 │   │   ├── shifts
 │   │   │   ├── migrations
 │   │   │   │   ├── __init__.py
-│   │   │   │   └── 0001_initial.py
+│   │   │   │   ├── 0001_initial.py
+│   │   │   │   └── 0002_shiftsuggestion.py
 │   │   │   ├── templates
 │   │   │   │   └── emails
 │   │   │   │       ├── new_request_admin.html
@@ -37,7 +38,13 @@
 │   │   │   │       ├── shift_approved.html
 │   │   │   │       ├── shift_approved.txt
 │   │   │   │       ├── shift_rejected.html
-│   │   │   │       └── shift_rejected.txt
+│   │   │   │       ├── shift_rejected.txt
+│   │   │   │       ├── shift_suggested.html
+│   │   │   │       ├── shift_suggested.txt
+│   │   │   │       ├── suggestion_accepted.html
+│   │   │   │       ├── suggestion_accepted.txt
+│   │   │   │       ├── suggestion_declined.html
+│   │   │   │       └── suggestion_declined.txt
 │   │   │   ├── __init__.py
 │   │   │   ├── admin.py
 │   │   │   ├── apps.py
@@ -93,6 +100,11 @@
 │   ├── app
 │   │   ├── admin
 │   │   │   ├── dashboard
+│   │   │   │   ├── page.tsx
+│   │   │   │   └── SuggestShiftModal.tsx
+│   │   │   ├── pas
+│   │   │   │   ├── [id]
+│   │   │   │   │   └── page.tsx
 │   │   │   │   └── page.tsx
 │   │   │   └── periods
 │   │   │       ├── new
@@ -117,8 +129,12 @@
 │   ├── lib
 │   │   ├── api.ts
 │   │   ├── auth-context.tsx
+│   │   ├── dashboard-api.ts
+│   │   ├── pa-colors.ts
+│   │   ├── pas-api.ts
 │   │   ├── schedules-api.ts
-│   │   └── shifts-api.ts
+│   │   ├── shifts-api.ts
+│   │   └── suggestions-api.ts
 │   ├── public
 │   │   ├── file.svg
 │   │   ├── globe.svg
@@ -140,4 +156,4 @@
 ├── README.md
 └── test_websocket.py
 
-33 directories, 108 files
+35 directories, 122 files
