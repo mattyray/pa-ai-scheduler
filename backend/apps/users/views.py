@@ -271,3 +271,92 @@ class UserListView(generics.ListAPIView):
             queryset = queryset.filter(role='PA')
         
         return queryset
+    
+# ============= PA MANAGEMENT VIEWS (ADMIN ONLY) =============
+
+class IsAdminUser(permissions.BasePermission):
+    """Custom permission: only admin users"""
+    def has_permission(self, request, view):
+        return request.user and request.user.is_authenticated and request.user.role == 'ADMIN'
+
+
+class PAListView(generics.ListAPIView):
+    """
+    GET /api/pas/
+    List all PA users (admin only)
+    """
+    serializer_class = PAListSerializer
+    permission_classes = [IsAdminUser]
+    
+    def get_queryset(self):
+        return User.objects.filter(role='PA').select_related('pa_profile', 'schedule_stats').order_by('first_name', 'last_name')
+
+
+class PADetailView(generics.RetrieveUpdateAPIView):
+    """
+    GET /api/pas/{id}/
+    PATCH /api/pas/{id}/
+    View and update individual PA (admin only)
+    """
+    permission_classes = [IsAdminUser]
+    lookup_field = 'id'
+    
+    def get_queryset(self):
+        return User.objects.filter(role='PA').select_related('pa_profile', 'schedule_stats')
+    
+    def get_serializer_class(self):
+        if self.request.method == 'PATCH':
+            return UserProfileUpdateSerializer
+        return PADetailSerializer
+
+
+class PAProfileUpdateView(generics.UpdateAPIView):
+    """
+    PATCH /api/pas/{id}/profile/
+    Update PA profile settings (admin only)
+    """
+    serializer_class = PAProfileUpdateSerializer
+    permission_classes = [IsAdminUser]
+    lookup_field = 'user_id'
+    
+    def get_queryset(self):
+        return PAProfile.objects.select_related('user').filter(user__role='PA')
+    
+    def get_object(self):
+        user_id = self.kwargs.get('user_id')
+        pa_profile = get_object_or_404(PAProfile, user_id=user_id)
+        return pa_profile
+
+
+class PAShiftHistoryView(APIView):
+    """
+    GET /api/pas/{id}/shift-history/
+    Get all shifts for a PA with filtering (admin only)
+    """
+    permission_classes = [IsAdminUser]
+    
+    def get(self, request, id):
+        from apps.shifts.models import ShiftRequest
+        from apps.shifts.serializers import ShiftRequestSerializer
+        
+        # Get query params
+        status = request.query_params.get('status')  # PENDING, APPROVED, REJECTED, CANCELLED
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        
+        # Base query
+        shifts = ShiftRequest.objects.filter(requested_by_id=id).select_related('schedule_period', 'approved_by')
+        
+        # Apply filters
+        if status:
+            shifts = shifts.filter(status=status)
+        if start_date:
+            shifts = shifts.filter(date__gte=start_date)
+        if end_date:
+            shifts = shifts.filter(date__lte=end_date)
+        
+        # Order by date descending
+        shifts = shifts.order_by('-date', '-created_at')
+        
+        serializer = ShiftRequestSerializer(shifts, many=True)
+        return Response(serializer.data)
