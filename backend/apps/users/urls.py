@@ -9,6 +9,10 @@ from .views import (
     PasswordResetConfirmView,
     UserProfileView,
     UserListView,
+    PAListView,
+    PADetailView,
+    PAProfileUpdateView,
+    PAShiftHistoryView,
 )
 
 app_name = 'users'
@@ -28,4 +32,10 @@ urlpatterns = [
     # Profile & Users
     path('me/', UserProfileView.as_view(), name='user-profile'),
     path('users/', UserListView.as_view(), name='user-list'),
+    
+    # PA Management (Admin Only)
+    path('pas/', PAListView.as_view(), name='pa-list'),
+    path('pas/<int:id>/', PADetailView.as_view(), name='pa-detail'),
+    path('pas/<int:user_id>/profile/', PAProfileUpdateView.as_view(), name='pa-profile-update'),
+    path('pas/<int:id>/shift-history/', PAShiftHistoryView.as_view(), name='pa-shift-history'),
 ]
