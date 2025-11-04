@@ -165,7 +165,14 @@ export default function SchedulePage() {
     }
   };
 
-  const handleDayClick = (date: string) => {
+  // Month view clicks go to Week view
+  const handleMonthDayClick = (date: string) => {
+    setCurrentDate(new Date(date));
+    setViewType('week');
+  };
+
+  // Week view clicks go to Day view
+  const handleWeekDayClick = (date: string) => {
     setCurrentDate(new Date(date));
     setViewType('day');
   };
@@ -333,9 +340,9 @@ export default function SchedulePage() {
             <p className="text-gray-500">No data available</p>
           </div>
         ) : viewType === 'month' ? (
-          <MonthView data={calendarData} onDayClick={handleDayClick} />
+          <MonthView data={calendarData} onDayClick={handleMonthDayClick} />
         ) : viewType === 'week' ? (
-          <WeekView data={calendarData} onDayClick={handleDayClick} onSuggestShift={openSuggestModal} isAdmin={user?.role === 'ADMIN'} />
+          <WeekView data={calendarData} onDayClick={handleWeekDayClick} onSuggestShift={openSuggestModal} isAdmin={user?.role === 'ADMIN'} />
         ) : (
           <DayView data={calendarData} onSuggestShift={openSuggestModal} isAdmin={user?.role === 'ADMIN'} />
         )}
