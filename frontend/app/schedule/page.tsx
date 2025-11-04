@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { getPAColor } from '@/lib/pa-colors';
 import SuggestShiftModal from '@/app/admin/dashboard/SuggestShiftModal';
@@ -9,6 +9,7 @@ import { api } from '@/lib/api';
 
 export default function SchedulePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, logout, loading: authLoading } = useAuth();
   
   const [periods, setPeriods] = useState<any[]>([]);
@@ -34,13 +35,33 @@ export default function SchedulePage() {
 
   useEffect(() => {
     if (!authLoading && user) {
+      const view = searchParams.get('view') as 'month' | 'week' | 'day' | null;
+      const dateParam = searchParams.get('date');
+      
+      if (view && ['month', 'week', 'day'].includes(view)) {
+        setViewType(view);
+      }
+      
+      if (dateParam) {
+        try {
+          const parsedDate = new Date(dateParam);
+          if (!isNaN(parsedDate.getTime())) {
+            setCurrentDate(parsedDate);
+          }
+        } catch (e) {
+          console.error('Invalid date parameter');
+        }
+      }
+      
       loadPeriods();
     }
-  }, [authLoading, user]);
+  }, [authLoading, user, searchParams]);
 
   useEffect(() => {
-    loadCalendarData();
-  }, [currentDate, viewType]);
+    if (!authLoading) {
+      loadCalendarData();
+    }
+  }, [currentDate, viewType, authLoading]);
 
   const loadPeriods = async () => {
     try {
@@ -61,7 +82,6 @@ export default function SchedulePage() {
       }
     } catch (error: any) {
       console.error('Failed to load periods:', error);
-      setError('Failed to load schedule periods');
     }
   };
 
@@ -134,7 +154,6 @@ export default function SchedulePage() {
     if (viewType === 'month') {
       return currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
     } else if (viewType === 'week') {
-      const { year, week } = getISOWeek(currentDate);
       const d = new Date(currentDate);
       const weekStart = new Date(d);
       weekStart.setDate(d.getDate() - d.getDay());
@@ -181,7 +200,7 @@ export default function SchedulePage() {
               setError(null);
               loadCalendarData();
             }}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
           >
             Retry
           </button>
