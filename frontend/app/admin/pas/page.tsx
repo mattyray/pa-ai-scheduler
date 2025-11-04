@@ -35,8 +35,7 @@ export default function PAListPage() {
     try {
       setDataLoading(true);
       const response = await pasAPI.list();
-      const paData = response.data;
-      setPAs(Array.isArray(paData) ? paData : []);
+      setPAs(response.data.results || []);
     } catch (err) {
       console.error('Failed to load PAs:', err);
     } finally {
