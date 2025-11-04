@@ -12,9 +12,12 @@ from .serializers import (
     PasswordResetRequestSerializer,
     PasswordResetConfirmSerializer,
     EmailVerificationSerializer,
-    UserProfileUpdateSerializer
+    UserProfileUpdateSerializer,
+    PAListSerializer,
+    PADetailSerializer,
+    PAProfileUpdateSerializer,
 )
-from .models import EmailVerificationToken, PasswordResetToken
+from .models import EmailVerificationToken, PasswordResetToken, PAProfile
 from .emails import send_verification_email, send_password_reset_email
 
 User = get_user_model()

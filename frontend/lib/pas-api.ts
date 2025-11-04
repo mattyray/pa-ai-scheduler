@@ -55,9 +55,17 @@ export interface Shift {
   created_at?: string;
 }
 
+// Paginated response type
+export interface PaginatedResponse<T> {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: T[];
+}
+
 export const pasAPI = {
-  // List all PAs
-  list: () => api.get<PA[]>('/api/auth/pas/'),
+  // List all PAs (returns paginated response)
+  list: () => api.get<PaginatedResponse<PA>>('/api/auth/pas/'),
   
   // Get individual PA details
   get: (id: number) => api.get<PADetail>(`/api/auth/pas/${id}/`),

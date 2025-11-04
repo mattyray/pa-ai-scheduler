@@ -1,6 +1,6 @@
 # TOTETAXI - BACKEND CODE SNAPSHOT
 # AUTO-GENERATED - CODE FILES ONLY
-# Created: 2025-11-02 19:07:57
+# Created: 2025-11-04 17:48:03
 # Total files: 80
 # 🔒 SECURITY: .env files excluded (contain secrets)
 # 📋 INCLUDES: All Django apps, migrations, configuration
@@ -687,8 +687,8 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/auth/', include('apps.users.urls')),
     path('api/schedule-periods/', include('apps.schedules.urls')),
-    path('api/calendar/', include('apps.schedules.urls')),
     path('api/shifts/', include('apps.shifts.urls')),
+    path('api/', include('apps.schedules.urls')),
 ]
 ```
 
@@ -1840,9 +1840,10 @@ router.register(r'', SchedulePeriodViewSet, basename='schedule-period')
 
 urlpatterns = [
     path('', include(router.urls)),
-    path('calendar/month/<int:year>/<int:month>/', MonthViewAPI.as_view(), name='month-view'),
-    path('calendar/week/<int:year>/<int:week>/', WeekViewAPI.as_view(), name='week-view'),
-    path('calendar/day/<str:date>/', DayViewAPI.as_view(), name='day-view'),
+    # Calendar views
+    path('calendar/month/<int:year>/<int:month>/', MonthViewAPI.as_view(), name='calendar-month'),
+    path('calendar/week/<int:year>/<int:week>/', WeekViewAPI.as_view(), name='calendar-week'),
+    path('calendar/day/<str:date>/', DayViewAPI.as_view(), name='calendar-day'),
 ]
 ```
 
@@ -4187,7 +4188,7 @@ class PAScheduleStats(models.Model):
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
-from .models import User
+from .models import User, PAProfile, PAScheduleStats  # <-- ADD PAProfile and PAScheduleStats here
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -4343,6 +4344,199 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
         if not value:
             raise serializers.ValidationError("Phone number is required.")
         return value
+    
+# ============= PA MANAGEMENT SERIALIZERS =============
+
+class PAProfileSerializer(serializers.ModelSerializer):
+    """Serializer for PA profile data"""
+    class Meta:
+        model = PAProfile
+        fields = [
+            'preferred_start_time',
+            'preferred_end_time', 
+            'preferred_days',
+            'max_hours_per_week',
+            'notes'
+        ]
+
+
+class PAScheduleStatsSerializer(serializers.ModelSerializer):
+    """Serializer for PA statistics"""
+    class Meta:
+        model = PAScheduleStats
+        fields = [
+            'total_shifts_worked',
+            'total_hours_worked',
+            'average_hours_per_week',
+            'most_common_days',
+            'most_common_start_time',
+            'most_common_shift_length',
+            'preferred_shift_pattern',
+            'reliability_score',
+            'typical_request_timing',
+            'consecutive_days_preference',
+            'last_worked_date',
+            'last_calculated'
+        ]
+
+
+class PAListSerializer(serializers.ModelSerializer):
+    """Serializer for listing PAs (summary view)"""
+    max_hours_per_week = serializers.SerializerMethodField()
+    total_shifts = serializers.SerializerMethodField()
+    total_hours = serializers.SerializerMethodField()
+    reliability_score = serializers.SerializerMethodField()
+    last_worked_date = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = User
+        fields = [
+            'id',
+            'email',
+            'first_name',
+            'last_name',
+            'phone_number',
+            'is_email_verified',
+            'is_active',
+            'date_joined',
+            'max_hours_per_week',
+            'total_shifts',
+            'total_hours',
+            'reliability_score',
+            'last_worked_date'
+        ]
+    
+    def get_max_hours_per_week(self, obj):
+        try:
+            return obj.pa_profile.max_hours_per_week
+        except:
+            return 40
+    
+    def get_total_shifts(self, obj):
+        try:
+            return obj.schedule_stats.total_shifts_worked
+        except:
+            return 0
+    
+    def get_total_hours(self, obj):
+        try:
+            return float(obj.schedule_stats.total_hours_worked)
+        except:
+            return 0.0
+    
+    def get_reliability_score(self, obj):
+        try:
+            return float(obj.schedule_stats.reliability_score)
+        except:
+            return 100.0
+    
+    def get_last_worked_date(self, obj):
+        try:
+            return obj.schedule_stats.last_worked_date
+        except:
+            return None
+
+
+class PADetailSerializer(serializers.ModelSerializer):
+    """Detailed serializer for individual PA view"""
+    profile = PAProfileSerializer(source='pa_profile', read_only=True)
+    stats = PAScheduleStatsSerializer(source='schedule_stats', read_only=True)
+    recent_shifts = serializers.SerializerMethodField()
+    upcoming_shifts = serializers.SerializerMethodField()
+    pending_requests = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = User
+        fields = [
+            'id',
+            'email',
+            'username',
+            'first_name',
+            'last_name',
+            'phone_number',
+            'is_email_verified',
+            'is_active',
+            'date_joined',
+            'last_login',
+            'profile',
+            'stats',
+            'recent_shifts',
+            'upcoming_shifts',
+            'pending_requests'
+        ]
+        read_only_fields = [
+            'id',
+            'email',
+            'username',
+            'date_joined',
+            'last_login'
+        ]
+    
+    def get_recent_shifts(self, obj):
+        """Get last 10 completed shifts"""
+        from datetime import date
+        from apps.shifts.models import ShiftRequest
+        
+        shifts = ShiftRequest.objects.filter(
+            requested_by=obj,
+            status='APPROVED',
+            date__lt=date.today()
+        ).select_related('schedule_period').order_by('-date')[:10]
+        
+        return [{
+            'id': shift.id,
+            'date': shift.date,
+            'start_time': shift.start_time,
+            'end_time': shift.end_time,
+            'duration_hours': float(shift.duration_hours),
+            'schedule_period_name': shift.schedule_period.name
+        } for shift in shifts]
+    
+    def get_upcoming_shifts(self, obj):
+        """Get upcoming approved shifts"""
+        from datetime import date
+        from apps.shifts.models import ShiftRequest
+        
+        shifts = ShiftRequest.objects.filter(
+            requested_by=obj,
+            status='APPROVED',
+            date__gte=date.today()
+        ).select_related('schedule_period').order_by('date')[:10]
+        
+        return [{
+            'id': shift.id,
+            'date': shift.date,
+            'start_time': shift.start_time,
+            'end_time': shift.end_time,
+            'duration_hours': float(shift.duration_hours),
+            'schedule_period_name': shift.schedule_period.name
+        } for shift in shifts]
+    
+    def get_pending_requests(self, obj):
+        """Get pending shift requests"""
+        from apps.shifts.models import ShiftRequest
+        
+        requests = ShiftRequest.objects.filter(
+            requested_by=obj,
+            status='PENDING'
+        ).select_related('schedule_period').order_by('date')
+        
+        return [{
+            'id': request.id,
+            'date': request.date,
+            'start_time': request.start_time,
+            'end_time': request.end_time,
+            'duration_hours': float(request.duration_hours),
+            'schedule_period_name': request.schedule_period.name,
+            'created_at': request.created_at
+        } for request in requests]
+
+
+class PAProfileUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for updating PA profile (admin only)"""
+    class Meta:
+        model = PAProfile
+        fields = ['max_hours_per_week', 'notes']
 ```
 
 # ==== apps/users/signals.py ====
@@ -4477,6 +4671,11 @@ from .views import (
     PasswordResetRequestView,
     PasswordResetConfirmView,
     UserProfileView,
+    UserListView,
+    PAListView,
+    PADetailView,
+    PAProfileUpdateView,
+    PAShiftHistoryView,
 )
 
 app_name = 'users'
@@ -4493,8 +4692,15 @@ urlpatterns = [
     path('password-reset/', PasswordResetRequestView.as_view(), name='password-reset'),
     path('password-reset-confirm/', PasswordResetConfirmView.as_view(), name='password-reset-confirm'),
     
-    # Profile
+    # Profile & Users
     path('me/', UserProfileView.as_view(), name='user-profile'),
+    path('users/', UserListView.as_view(), name='user-list'),
+    
+    # PA Management (Admin Only)
+    path('pas/', PAListView.as_view(), name='pa-list'),
+    path('pas/<int:id>/', PADetailView.as_view(), name='pa-detail'),
+    path('pas/<int:user_id>/profile/', PAProfileUpdateView.as_view(), name='pa-profile-update'),
+    path('pas/<int:id>/shift-history/', PAShiftHistoryView.as_view(), name='pa-shift-history'),
 ]
 ```
 
@@ -4663,9 +4869,12 @@ from .serializers import (
     PasswordResetRequestSerializer,
     PasswordResetConfirmSerializer,
     EmailVerificationSerializer,
-    UserProfileUpdateSerializer
+    UserProfileUpdateSerializer,
+    PAListSerializer,
+    PADetailSerializer,
+    PAProfileUpdateSerializer,
 )
-from .models import EmailVerificationToken, PasswordResetToken
+from .models import EmailVerificationToken, PasswordResetToken, PAProfile
 from .emails import send_verification_email, send_password_reset_email
 
 User = get_user_model()
@@ -4900,5 +5109,116 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
         if self.request.method == 'PATCH':
             return UserProfileUpdateSerializer
         return UserSerializer
+    
+class UserListView(generics.ListAPIView):
+    """
+    GET /api/auth/users/
+    List all users (admin only) or filtered by role
+    """
+    serializer_class = UserSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        queryset = User.objects.all().order_by('first_name', 'last_name')
+        
+        # Filter by role if provided
+        role = self.request.query_params.get('role', None)
+        if role:
+            queryset = queryset.filter(role=role)
+        
+        # Optional: Only admins can see all users, PAs only see other PAs
+        if self.request.user.role != 'ADMIN':
+            queryset = queryset.filter(role='PA')
+        
+        return queryset
+    
+# ============= PA MANAGEMENT VIEWS (ADMIN ONLY) =============
+
+class IsAdminUser(permissions.BasePermission):
+    """Custom permission: only admin users"""
+    def has_permission(self, request, view):
+        return request.user and request.user.is_authenticated and request.user.role == 'ADMIN'
+
+
+class PAListView(generics.ListAPIView):
+    """
+    GET /api/pas/
+    List all PA users (admin only)
+    """
+    serializer_class = PAListSerializer
+    permission_classes = [IsAdminUser]
+    
+    def get_queryset(self):
+        return User.objects.filter(role='PA').select_related('pa_profile', 'schedule_stats').order_by('first_name', 'last_name')
+
+
+class PADetailView(generics.RetrieveUpdateAPIView):
+    """
+    GET /api/pas/{id}/
+    PATCH /api/pas/{id}/
+    View and update individual PA (admin only)
+    """
+    permission_classes = [IsAdminUser]
+    lookup_field = 'id'
+    
+    def get_queryset(self):
+        return User.objects.filter(role='PA').select_related('pa_profile', 'schedule_stats')
+    
+    def get_serializer_class(self):
+        if self.request.method == 'PATCH':
+            return UserProfileUpdateSerializer
+        return PADetailSerializer
+
+
+class PAProfileUpdateView(generics.UpdateAPIView):
+    """
+    PATCH /api/pas/{id}/profile/
+    Update PA profile settings (admin only)
+    """
+    serializer_class = PAProfileUpdateSerializer
+    permission_classes = [IsAdminUser]
+    lookup_field = 'user_id'
+    
+    def get_queryset(self):
+        return PAProfile.objects.select_related('user').filter(user__role='PA')
+    
+    def get_object(self):
+        user_id = self.kwargs.get('user_id')
+        pa_profile = get_object_or_404(PAProfile, user_id=user_id)
+        return pa_profile
+
+
+class PAShiftHistoryView(APIView):
+    """
+    GET /api/pas/{id}/shift-history/
+    Get all shifts for a PA with filtering (admin only)
+    """
+    permission_classes = [IsAdminUser]
+    
+    def get(self, request, id):
+        from apps.shifts.models import ShiftRequest
+        from apps.shifts.serializers import ShiftRequestSerializer
+        
+        # Get query params
+        status = request.query_params.get('status')  # PENDING, APPROVED, REJECTED, CANCELLED
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        
+        # Base query
+        shifts = ShiftRequest.objects.filter(requested_by_id=id).select_related('schedule_period', 'approved_by')
+        
+        # Apply filters
+        if status:
+            shifts = shifts.filter(status=status)
+        if start_date:
+            shifts = shifts.filter(date__gte=start_date)
+        if end_date:
+            shifts = shifts.filter(date__lte=end_date)
+        
+        # Order by date descending
+        shifts = shifts.order_by('-date', '-created_at')
+        
+        serializer = ShiftRequestSerializer(shifts, many=True)
+        return Response(serializer.data)
 ```
 
