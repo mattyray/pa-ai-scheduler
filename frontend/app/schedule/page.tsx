@@ -3,9 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
-import { schedulesAPI } from '@/lib/schedules-api';
 import { getPAColor } from '@/lib/pa-colors';
 import SuggestShiftModal from '@/app/admin/dashboard/SuggestShiftModal';
+import { api } from '@/lib/api';
 
 export default function SchedulePage() {
   const router = useRouter();
@@ -39,26 +39,25 @@ export default function SchedulePage() {
   }, [authLoading, user]);
 
   useEffect(() => {
-    if (selectedPeriod) {
-      loadCalendarData();
-    }
-  }, [selectedPeriod, currentDate, viewType]);
+    loadCalendarData();
+  }, [currentDate, viewType]);
 
   const loadPeriods = async () => {
     try {
-      console.log('Loading periods...');
-      const response = await schedulesAPI.listPeriods();
-      const periodsData = response.data;
-      console.log('Periods loaded:', periodsData);
+      const response = await api.get('/api/schedule-periods/');
+      let periodsData = response.data;
+      
+      if (periodsData.results && Array.isArray(periodsData.results)) {
+        periodsData = periodsData.results;
+      } else if (!Array.isArray(periodsData)) {
+        periodsData = [];
+      }
+      
       setPeriods(periodsData);
       
       if (periodsData.length > 0) {
         const openPeriod = periodsData.find((p: any) => p.status === 'OPEN');
-        const periodToSelect = openPeriod?.id || periodsData[0].id;
-        console.log('Selecting period:', periodToSelect);
-        setSelectedPeriod(periodToSelect);
-      } else {
-        setError('No schedule periods available');
+        setSelectedPeriod(openPeriod?.id || periodsData[0].id);
       }
     } catch (error: any) {
       console.error('Failed to load periods:', error);
@@ -66,48 +65,41 @@ export default function SchedulePage() {
     }
   };
 
+  const getISOWeek = (date: Date): { year: number; week: number } => {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() + 4 - (d.getDay() || 7));
+    const yearStart = new Date(d.getFullYear(), 0, 1);
+    const weekNo = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+    return { year: d.getFullYear(), week: weekNo };
+  };
+
   const loadCalendarData = async () => {
-    if (!selectedPeriod) return;
-    
     setLoading(true);
     setError(null);
     
     try {
-      console.log('Loading calendar data...', { viewType, selectedPeriod, currentDate });
       let response;
       
       if (viewType === 'month') {
         const year = currentDate.getFullYear();
         const month = currentDate.getMonth() + 1;
-        console.log('Fetching month view:', { year, month, selectedPeriod });
-        response = await schedulesAPI.getMonthView(selectedPeriod, year, month);
+        response = await api.get(`/api/schedule-periods/calendar/month/${year}/${month}/`);
       } else if (viewType === 'week') {
-        const weekStart = getWeekStart(currentDate);
-        console.log('Fetching week view:', { weekStart, selectedPeriod });
-        response = await schedulesAPI.getWeekView(weekStart as any, selectedPeriod as any);
+        const { year, week } = getISOWeek(currentDate);
+        response = await api.get(`/api/schedule-periods/calendar/week/${year}/${week}/`);
       } else {
         const dateStr = currentDate.toISOString().split('T')[0];
-        console.log('Fetching day view:', { dateStr, selectedPeriod });
-        response = await schedulesAPI.getDayView(dateStr as any, selectedPeriod as any);
+        response = await api.get(`/api/schedule-periods/calendar/day/${dateStr}/`);
       }
       
-      console.log('Calendar data loaded:', response.data);
       setCalendarData(response.data);
     } catch (error: any) {
       console.error('Failed to load calendar data:', error);
-      console.error('Error details:', error.response?.data);
-      setError('Failed to load calendar data');
+      setError(`Failed to load calendar: ${error.response?.data?.error || error.message}`);
     } finally {
       setLoading(false);
     }
-  };
-
-  const getWeekStart = (date: Date): string => {
-    const d = new Date(date);
-    const day = d.getDay();
-    const diff = d.getDate() - day;
-    const weekStart = new Date(d.setDate(diff));
-    return weekStart.toISOString().split('T')[0];
   };
 
   const goToPrevious = () => {
@@ -142,10 +134,13 @@ export default function SchedulePage() {
     if (viewType === 'month') {
       return currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
     } else if (viewType === 'week') {
-      const weekStart = getWeekStart(currentDate);
+      const { year, week } = getISOWeek(currentDate);
+      const d = new Date(currentDate);
+      const weekStart = new Date(d);
+      weekStart.setDate(d.getDate() - d.getDay());
       const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekEnd.getDate() + 6);
-      return `${new Date(weekStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+      weekEnd.setDate(weekStart.getDate() + 6);
+      return `${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
     } else {
       return currentDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
     }
@@ -184,7 +179,7 @@ export default function SchedulePage() {
           <button
             onClick={() => {
               setError(null);
-              loadPeriods();
+              loadCalendarData();
             }}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
           >
@@ -234,7 +229,7 @@ export default function SchedulePage() {
                 onChange={(e) => setSelectedPeriod(parseInt(e.target.value))}
                 className="flex-1 sm:flex-initial border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
-                {periods.map((period) => (
+                {Array.isArray(periods) && periods.map((period) => (
                   <option key={period.id} value={period.id}>
                     {period.name} ({period.status})
                   </option>
