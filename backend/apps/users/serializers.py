@@ -157,3 +157,196 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
         if not value:
             raise serializers.ValidationError("Phone number is required.")
         return value
+    
+# ============= PA MANAGEMENT SERIALIZERS =============
+
+class PAProfileSerializer(serializers.ModelSerializer):
+    """Serializer for PA profile data"""
+    class Meta:
+        model = PAProfile
+        fields = [
+            'preferred_start_time',
+            'preferred_end_time', 
+            'preferred_days',
+            'max_hours_per_week',
+            'notes'
+        ]
+
+
+class PAScheduleStatsSerializer(serializers.ModelSerializer):
+    """Serializer for PA statistics"""
+    class Meta:
+        model = PAScheduleStats
+        fields = [
+            'total_shifts_worked',
+            'total_hours_worked',
+            'average_hours_per_week',
+            'most_common_days',
+            'most_common_start_time',
+            'most_common_shift_length',
+            'preferred_shift_pattern',
+            'reliability_score',
+            'typical_request_timing',
+            'consecutive_days_preference',
+            'last_worked_date',
+            'last_calculated'
+        ]
+
+
+class PAListSerializer(serializers.ModelSerializer):
+    """Serializer for listing PAs (summary view)"""
+    max_hours_per_week = serializers.SerializerMethodField()
+    total_shifts = serializers.SerializerMethodField()
+    total_hours = serializers.SerializerMethodField()
+    reliability_score = serializers.SerializerMethodField()
+    last_worked_date = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = User
+        fields = [
+            'id',
+            'email',
+            'first_name',
+            'last_name',
+            'phone_number',
+            'is_email_verified',
+            'is_active',
+            'date_joined',
+            'max_hours_per_week',
+            'total_shifts',
+            'total_hours',
+            'reliability_score',
+            'last_worked_date'
+        ]
+    
+    def get_max_hours_per_week(self, obj):
+        try:
+            return obj.pa_profile.max_hours_per_week
+        except:
+            return 40
+    
+    def get_total_shifts(self, obj):
+        try:
+            return obj.schedule_stats.total_shifts_worked
+        except:
+            return 0
+    
+    def get_total_hours(self, obj):
+        try:
+            return float(obj.schedule_stats.total_hours_worked)
+        except:
+            return 0.0
+    
+    def get_reliability_score(self, obj):
+        try:
+            return float(obj.schedule_stats.reliability_score)
+        except:
+            return 100.0
+    
+    def get_last_worked_date(self, obj):
+        try:
+            return obj.schedule_stats.last_worked_date
+        except:
+            return None
+
+
+class PADetailSerializer(serializers.ModelSerializer):
+    """Detailed serializer for individual PA view"""
+    profile = PAProfileSerializer(source='pa_profile', read_only=True)
+    stats = PAScheduleStatsSerializer(source='schedule_stats', read_only=True)
+    recent_shifts = serializers.SerializerMethodField()
+    upcoming_shifts = serializers.SerializerMethodField()
+    pending_requests = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = User
+        fields = [
+            'id',
+            'email',
+            'username',
+            'first_name',
+            'last_name',
+            'phone_number',
+            'is_email_verified',
+            'is_active',
+            'date_joined',
+            'last_login',
+            'profile',
+            'stats',
+            'recent_shifts',
+            'upcoming_shifts',
+            'pending_requests'
+        ]
+        read_only_fields = [
+            'id',
+            'email',
+            'username',
+            'date_joined',
+            'last_login'
+        ]
+    
+    def get_recent_shifts(self, obj):
+        """Get last 10 completed shifts"""
+        from datetime import date
+        from apps.shifts.models import ShiftRequest
+        
+        shifts = ShiftRequest.objects.filter(
+            requested_by=obj,
+            status='APPROVED',
+            date__lt=date.today()
+        ).select_related('schedule_period').order_by('-date')[:10]
+        
+        return [{
+            'id': shift.id,
+            'date': shift.date,
+            'start_time': shift.start_time,
+            'end_time': shift.end_time,
+            'duration_hours': float(shift.duration_hours),
+            'schedule_period_name': shift.schedule_period.name
+        } for shift in shifts]
+    
+    def get_upcoming_shifts(self, obj):
+        """Get upcoming approved shifts"""
+        from datetime import date
+        from apps.shifts.models import ShiftRequest
+        
+        shifts = ShiftRequest.objects.filter(
+            requested_by=obj,
+            status='APPROVED',
+            date__gte=date.today()
+        ).select_related('schedule_period').order_by('date')[:10]
+        
+        return [{
+            'id': shift.id,
+            'date': shift.date,
+            'start_time': shift.start_time,
+            'end_time': shift.end_time,
+            'duration_hours': float(shift.duration_hours),
+            'schedule_period_name': shift.schedule_period.name
+        } for shift in shifts]
+    
+    def get_pending_requests(self, obj):
+        """Get pending shift requests"""
+        from apps.shifts.models import ShiftRequest
+        
+        requests = ShiftRequest.objects.filter(
+            requested_by=obj,
+            status='PENDING'
+        ).select_related('schedule_period').order_by('date')
+        
+        return [{
+            'id': request.id,
+            'date': request.date,
+            'start_time': request.start_time,
+            'end_time': request.end_time,
+            'duration_hours': float(request.duration_hours),
+            'schedule_period_name': request.schedule_period.name,
+            'created_at': request.created_at
+        } for request in requests]
+
+
+class PAProfileUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for updating PA profile (admin only)"""
+    class Meta:
+        model = PAProfile
+        fields = ['max_hours_per_week', 'notes']
