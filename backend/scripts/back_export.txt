@@ -1,7 +1,7 @@
 # TOTETAXI - BACKEND CODE SNAPSHOT
 # AUTO-GENERATED - CODE FILES ONLY
-# Created: 2025-11-05 11:20:55
-# Total files: 83
+# Created: 2025-11-05 16:20:36
+# Total files: 88
 # 🔒 SECURITY: .env files excluded (contain secrets)
 # 📋 INCLUDES: All Django apps, migrations, configuration
 # Apps: accounts (STAFF), bookings, customers, logistics, payments, services
@@ -1628,6 +1628,181 @@ class ScheduleConsumer(AsyncWebsocketConsumer):
 
 ```
 
+# ==== apps/schedules/management/commands/add_pending_requests.py ====
+
+```python
+from django.core.management.base import BaseCommand
+from django.utils import timezone
+from datetime import datetime, time, timedelta
+from apps.users.models import User, PAProfile
+from apps.schedules.models import SchedulePeriod
+from apps.shifts.models import ShiftRequest
+from decimal import Decimal
+
+
+class Command(BaseCommand):
+    help = 'Add pending shift requests to existing test data'
+
+    def handle(self, *args, **kwargs):
+        self.stdout.write('Adding pending shift requests...\n')
+        
+        # Get existing PAs
+        pa1 = User.objects.filter(email='sarah.johnson@example.com').first()
+        pa2 = User.objects.filter(email='michael.chen@example.com').first()
+        pa3 = User.objects.filter(email='emily.davis@example.com').first()
+        
+        if not pa1 or not pa2:
+            self.stdout.write(self.style.ERROR('Test PAs not found. Run create_test_data first.'))
+            return
+        
+        if not pa3:
+            pa3 = User.objects.create(
+                email='emily.davis@example.com',
+                username='emily.davis',
+                first_name='Emily',
+                last_name='Davis',
+                phone_number='+1-555-0103',
+                role='PA',
+                is_email_verified=True,
+                is_active=True
+            )
+            pa3.set_password('testpass123')
+            pa3.save()
+            
+            PAProfile.objects.get_or_create(
+                user=pa3,
+                defaults={
+                    'max_hours_per_week': 30,
+                    'preferred_start_time': time(6, 0),
+                    'preferred_end_time': time(18, 0)
+                }
+            )
+            self.stdout.write(self.style.SUCCESS(f'✓ Created new PA: {pa3.get_full_name()}'))
+        else:
+            self.stdout.write(f'✓ Found existing PA: {pa3.get_full_name()}')
+        
+        # Get periods
+        period1 = SchedulePeriod.objects.filter(start_date=datetime(2025, 11, 2).date()).first()
+        period2 = SchedulePeriod.objects.filter(start_date=datetime(2025, 11, 9).date()).first()
+        
+        if not period1 or not period2:
+            self.stdout.write(self.style.ERROR('Test periods not found. Run create_test_data first.'))
+            return
+        
+        self.stdout.write(self.style.WARNING('\nCreating PENDING requests...\n'))
+        
+        # Week 1 - PENDING requests
+        self.stdout.write('Week 1 (Nov 2-8):')
+        
+        # Sarah - extra morning Tuesday
+        self.create_pending_request(
+            period1, pa1, 
+            period1.start_date + timedelta(days=1),
+            time(6, 0), time(12, 0),
+            "Need extra hours this week, can cover morning"
+        )
+        
+        # Michael - afternoon Sunday  
+        self.create_pending_request(
+            period1, pa2,
+            period1.start_date + timedelta(days=5),
+            time(14, 0), time(20, 0),
+            "Available for afternoon coverage"
+        )
+        
+        # Emily - midday Thursday
+        self.create_pending_request(
+            period1, pa3,
+            period1.start_date + timedelta(days=3),
+            time(10, 0), time(16, 0),
+            "New PA - available to help with coverage"
+        )
+        
+        # Emily - Friday morning
+        self.create_pending_request(
+            period1, pa3,
+            period1.start_date + timedelta(days=4),
+            time(6, 0), time(14, 0),
+            "Can cover morning shift on Friday"
+        )
+        
+        # Week 2 - PENDING requests
+        self.stdout.write('\nWeek 2 (Nov 9-15):')
+        
+        # Sarah - evening Monday
+        self.create_pending_request(
+            period2, pa1,
+            period2.start_date,
+            time(17, 0), time(22, 0),
+            "Can work evening shift"
+        )
+        
+        # Emily - morning Wednesday
+        self.create_pending_request(
+            period2, pa3,
+            period2.start_date + timedelta(days=2),
+            time(6, 0), time(12, 0),
+            "Available for morning coverage"
+        )
+        
+        # Michael - late night Saturday
+        self.create_pending_request(
+            period2, pa2,
+            period2.start_date + timedelta(days=5),
+            time(20, 0), time(23, 59),
+            "Can cover late night if needed"
+        )
+        
+        # Sarah - full day Sunday
+        self.create_pending_request(
+            period2, pa1,
+            period2.start_date + timedelta(days=6),
+            time(8, 0), time(18, 0),
+            "Available for full day shift"
+        )
+        
+        pending_count = ShiftRequest.objects.filter(status='PENDING').count()
+        self.stdout.write(self.style.SUCCESS(f'\n✓ Total PENDING requests: {pending_count}'))
+        self.stdout.write('\n🎉 You can now test approve/reject on the calendar!')
+
+    def create_pending_request(self, period, pa, date, start_time, end_time, notes):
+        """Create a pending shift request"""
+        # Check if already exists
+        existing = ShiftRequest.objects.filter(
+            schedule_period=period,
+            requested_by=pa,
+            date=date,
+            start_time=start_time,
+            status='PENDING'
+        ).first()
+        
+        if existing:
+            self.stdout.write(f'  ⚠ Already exists: {pa.first_name} on {date.strftime("%a %m/%d")}')
+            return existing
+        
+        # Calculate duration
+        start_datetime = datetime.combine(date, start_time)
+        end_datetime = datetime.combine(date, end_time)
+        if end_datetime < start_datetime:
+            end_datetime += timedelta(days=1)
+        duration = (end_datetime - start_datetime).total_seconds() / 3600
+        
+        shift = ShiftRequest.objects.create(
+            schedule_period=period,
+            requested_by=pa,
+            date=date,
+            start_time=start_time,
+            end_time=end_time,
+            duration_hours=Decimal(str(duration)),
+            status='PENDING',
+            notes=notes,
+            created_at=timezone.now()
+        )
+        
+        self.stdout.write(f'  ✓ {pa.first_name} - {date.strftime("%a %m/%d")} {start_time.strftime("%I:%M%p")}-{end_time.strftime("%I:%M%p")}')
+        return shift
+```
+
 # ==== apps/schedules/management/commands/create_test_data.py ====
 
 ```python
@@ -2407,12 +2582,16 @@ class SchedulePeriodViewSet(viewsets.ModelViewSet):
 class MonthViewAPI(APIView):
     """
     GET /api/calendar/month/{year}/{month}/
-    Returns all approved shifts for a given month in calendar format
+    Returns approved AND pending shifts for a given month in calendar format
+    
+    Query params:
+    - pa_id: Filter by specific PA
+    - status: Filter by status (APPROVED, PENDING, etc.) - defaults to both APPROVED and PENDING
     """
     permission_classes = [permissions.IsAuthenticated]
     
     def get(self, request, year, month):
-        """Get month view data"""
+        """Get month view data with both approved and pending shifts"""
         try:
             year = int(year)
             month = int(month)
@@ -2427,12 +2606,25 @@ class MonthViewAPI(APIView):
             first_day = datetime(year, month, 1).date()
             last_day = datetime(year, month, monthrange(year, month)[1]).date()
             
-            # Get all approved shifts for this month
-            shifts = ShiftRequest.objects.filter(
-                date__gte=first_day,
-                date__lte=last_day,
-                status='APPROVED'
-            ).select_related('requested_by', 'schedule_period').order_by('date', 'start_time')
+            # Get status filter (optional)
+            status_filter = request.query_params.get('status')
+            
+            if status_filter:
+                # Filter by specific status if provided
+                shifts = ShiftRequest.objects.filter(
+                    date__gte=first_day,
+                    date__lte=last_day,
+                    status=status_filter.upper()
+                )
+            else:
+                # Default: show both APPROVED and PENDING
+                shifts = ShiftRequest.objects.filter(
+                    date__gte=first_day,
+                    date__lte=last_day,
+                    status__in=['APPROVED', 'PENDING']
+                )
+            
+            shifts = shifts.select_related('requested_by', 'schedule_period').order_by('date', 'start_time')
             
             # Optional: Filter by PA
             pa_id = request.query_params.get('pa_id')
@@ -2558,12 +2750,16 @@ class MonthViewAPI(APIView):
 class WeekViewAPI(APIView):
     """
     GET /api/calendar/week/{year}/{week}/
-    Returns all approved shifts for a given week (ISO week number)
+    Returns approved AND pending shifts for a given week (ISO week number)
+    
+    Query params:
+    - pa_id: Filter by specific PA
+    - status: Filter by status (APPROVED, PENDING, etc.) - defaults to both APPROVED and PENDING
     """
     permission_classes = [permissions.IsAuthenticated]
     
     def get(self, request, year, week):
-        """Get week view data"""
+        """Get week view data with both approved and pending shifts"""
         try:
             year = int(year)
             week = int(week)
@@ -2580,12 +2776,25 @@ class WeekViewAPI(APIView):
             week_start = week_1_monday + timedelta(weeks=week - 1)
             week_end = week_start + timedelta(days=6)
             
-            # Get all approved shifts for this week
-            shifts = ShiftRequest.objects.filter(
-                date__gte=week_start,
-                date__lte=week_end,
-                status='APPROVED'
-            ).select_related('requested_by', 'schedule_period').order_by('date', 'start_time')
+            # Get status filter (optional)
+            status_filter = request.query_params.get('status')
+            
+            if status_filter:
+                # Filter by specific status if provided
+                shifts = ShiftRequest.objects.filter(
+                    date__gte=week_start,
+                    date__lte=week_end,
+                    status=status_filter.upper()
+                )
+            else:
+                # Default: show both APPROVED and PENDING
+                shifts = ShiftRequest.objects.filter(
+                    date__gte=week_start,
+                    date__lte=week_end,
+                    status__in=['APPROVED', 'PENDING']
+                )
+            
+            shifts = shifts.select_related('requested_by', 'schedule_period').order_by('date', 'start_time')
             
             # Optional: Filter by PA
             pa_id = request.query_params.get('pa_id')
@@ -2630,6 +2839,7 @@ class WeekViewAPI(APIView):
                 {'error': 'Invalid year or week'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+    
     def _get_day_coverage(self, date):
         """Get coverage status for a specific day"""
         try:
@@ -2664,21 +2874,37 @@ class WeekViewAPI(APIView):
 class DayViewAPI(APIView):
     """
     GET /api/calendar/day/{date}/
-    Returns all approved shifts for a specific day with hourly breakdown
+    Returns approved AND pending shifts for a specific day with hourly breakdown
     Date format: YYYY-MM-DD
+    
+    Query params:
+    - pa_id: Filter by specific PA
+    - status: Filter by status (APPROVED, PENDING, etc.) - defaults to both APPROVED and PENDING
     """
     permission_classes = [permissions.IsAuthenticated]
     
     def get(self, request, date):
-        """Get day view data"""
+        """Get day view data with both approved and pending shifts"""
         try:
             day_date = datetime.strptime(date, '%Y-%m-%d').date()
             
-            # Get all approved shifts for this day
-            shifts = ShiftRequest.objects.filter(
-                date=day_date,
-                status='APPROVED'
-            ).select_related('requested_by', 'schedule_period').order_by('start_time')
+            # Get status filter (optional)
+            status_filter = request.query_params.get('status')
+            
+            if status_filter:
+                # Filter by specific status if provided
+                shifts = ShiftRequest.objects.filter(
+                    date=day_date,
+                    status=status_filter.upper()
+                )
+            else:
+                # Default: show both APPROVED and PENDING
+                shifts = ShiftRequest.objects.filter(
+                    date=day_date,
+                    status__in=['APPROVED', 'PENDING']
+                )
+            
+            shifts = shifts.select_related('requested_by', 'schedule_period').order_by('start_time')
             
             # Optional: Filter by PA
             pa_id = request.query_params.get('pa_id')
@@ -3007,6 +3233,29 @@ class Migration(migrations.Migration):
     ]
 ```
 
+# ==== apps/shifts/migrations/0003_shiftrequest_cancellation_reason.py ====
+
+```python
+# Generated by Django 5.2.7 on 2025-11-05 19:20
+
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ('shifts', '0002_shiftsuggestion'),
+    ]
+
+    operations = [
+        migrations.AddField(
+            model_name='shiftrequest',
+            name='cancellation_reason',
+            field=models.TextField(blank=True, default=''),
+        ),
+    ]
+```
+
 # ==== apps/shifts/migrations/__init__.py ====
 
 ```python
@@ -3040,6 +3289,7 @@ class ShiftRequest(models.Model):
     notes = models.TextField(blank=True)
     admin_notes = models.TextField(blank=True)
     rejected_reason = models.TextField(blank=True)
+    cancellation_reason = models.TextField(blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     approved_at = models.DateTimeField(null=True, blank=True)
@@ -3310,62 +3560,68 @@ def send_new_request_email(request_id):
 
 
 @shared_task
-def send_shift_approved_email(request_id):
+def send_shift_approved_email(shift_id):
     from .models import ShiftRequest
     try:
-        shift_request = ShiftRequest.objects.get(id=request_id)
+        shift = ShiftRequest.objects.get(id=shift_id)
         
         context = {
-            'pa_name': shift_request.requested_by.first_name,
-            'date': shift_request.date.strftime('%B %d, %Y'),
-            'start_time': shift_request.start_time.strftime('%I:%M %p'),
-            'end_time': shift_request.end_time.strftime('%I:%M %p'),
-            'duration': shift_request.duration_hours,
-            'admin_notes': shift_request.admin_notes,
+            'pa_name': shift.requested_by.first_name,
+            'admin_name': shift.approved_by.get_full_name() if shift.approved_by else 'Admin',
+            'date': shift.date.strftime('%B %d, %Y'),
+            'start_time': shift.start_time.strftime('%I:%M %p'),
+            'end_time': shift.end_time.strftime('%I:%M %p'),
+            'duration': shift.duration_hours,
+            'period_name': shift.schedule_period.name,
+            'admin_notes': shift.admin_notes,
+            'schedule_url': f'{settings.FRONTEND_URL}/schedule',
         }
         
         html_message = render_to_string('emails/shift_approved.html', context)
         plain_message = render_to_string('emails/shift_approved.txt', context)
         
         send_mail(
-            subject='Shift Request Approved',
+            subject='Your Shift Request Has Been Approved',
             message=plain_message,
             from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[shift_request.requested_by.email],
+            recipient_list=[shift.requested_by.email],
             html_message=html_message,
             fail_silently=False,
         )
     except Exception as e:
-        print(f"Error sending approved email: {e}")
+        print(f"Error sending approval email: {e}")
 
 
 @shared_task
-def send_shift_rejected_email(request_id):
+def send_shift_rejected_email(shift_id):
     from .models import ShiftRequest
     try:
-        shift_request = ShiftRequest.objects.get(id=request_id)
+        shift = ShiftRequest.objects.get(id=shift_id)
         
         context = {
-            'pa_name': shift_request.requested_by.first_name,
-            'date': shift_request.date.strftime('%B %d, %Y'),
-            'start_time': shift_request.start_time.strftime('%I:%M %p'),
-            'end_time': shift_request.end_time.strftime('%I:%M %p'),
-            'reason': shift_request.rejected_reason,
+            'pa_name': shift.requested_by.first_name,
+            'date': shift.date.strftime('%B %d, %Y'),
+            'start_time': shift.start_time.strftime('%I:%M %p'),
+            'end_time': shift.end_time.strftime('%I:%M %p'),
+            'duration': shift.duration_hours,
+            'period_name': shift.schedule_period.name,
+            'rejected_reason': shift.rejected_reason,
+            'new_request_url': f'{settings.FRONTEND_URL}/requests/new',
         }
         
         html_message = render_to_string('emails/shift_rejected.html', context)
         plain_message = render_to_string('emails/shift_rejected.txt', context)
         
         send_mail(
-            subject='Shift Request Rejected',
+            subject='Shift Request Not Approved',
             message=plain_message,
             from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[shift_request.requested_by.email],
+            recipient_list=[shift.requested_by.email],
             html_message=html_message,
             fail_silently=False,
         )
     except Exception as e:
-        print(f"Error sending rejected email: {e}")
+        print(f"Error sending rejection email: {e}")
 
 
 @shared_task
@@ -3458,6 +3714,116 @@ def notify_admin_suggestion_declined(suggestion_id):
         )
     except Exception as e:
         print(f"Error sending declined notification: {e}")
+
+
+@shared_task
+def send_shift_edited_notification(shift_id, old_date, old_start_time, old_end_time):
+    from .models import ShiftRequest
+    from datetime import datetime
+    try:
+        shift = ShiftRequest.objects.get(id=shift_id)
+        
+        old_date_formatted = datetime.strptime(old_date, '%Y-%m-%d').strftime('%B %d, %Y')
+        old_start_formatted = datetime.strptime(old_start_time, '%H:%M:%S').strftime('%I:%M %p')
+        old_end_formatted = datetime.strptime(old_end_time, '%H:%M:%S').strftime('%I:%M %p')
+        
+        context = {
+            'pa_name': shift.requested_by.first_name,
+            'old_date': old_date_formatted,
+            'old_start_time': old_start_formatted,
+            'old_end_time': old_end_formatted,
+            'new_date': shift.date.strftime('%B %d, %Y'),
+            'new_start_time': shift.start_time.strftime('%I:%M %p'),
+            'new_end_time': shift.end_time.strftime('%I:%M %p'),
+            'admin_notes': shift.admin_notes,
+            'schedule_url': f'{settings.FRONTEND_URL}/schedule',
+        }
+        
+        html_message = render_to_string('emails/shift_edited.html', context)
+        plain_message = render_to_string('emails/shift_edited.txt', context)
+        
+        send_mail(
+            subject='Your Shift Has Been Updated',
+            message=plain_message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[shift.requested_by.email],
+            html_message=html_message,
+            fail_silently=False,
+        )
+    except Exception as e:
+        print(f"Error sending shift edited email: {e}")
+
+
+@shared_task
+def send_shift_cancelled_by_pa_notification(shift_id, cancellation_reason):
+    from .models import ShiftRequest
+    try:
+        shift = ShiftRequest.objects.get(id=shift_id)
+        admin_users = shift.requested_by.__class__.objects.filter(role='ADMIN')
+        
+        coverage_warning = ''
+        from datetime import time
+        if (shift.start_time <= time(6, 0) and shift.end_time >= time(9, 0)):
+            coverage_warning = '⚠️ WARNING: This shift covered the critical MORNING time slot (6-9 AM). This date may now have a coverage gap.'
+        elif (shift.start_time <= time(21, 0) and shift.end_time >= time(22, 0)):
+            coverage_warning = '⚠️ WARNING: This shift covered the critical EVENING time slot (9-10 PM). This date may now have a coverage gap.'
+        
+        for admin in admin_users:
+            context = {
+                'admin_name': admin.first_name,
+                'pa_name': shift.requested_by.get_full_name(),
+                'date': shift.date.strftime('%B %d, %Y'),
+                'start_time': shift.start_time.strftime('%I:%M %p'),
+                'end_time': shift.end_time.strftime('%I:%M %p'),
+                'duration': shift.duration_hours,
+                'cancellation_reason': cancellation_reason,
+                'coverage_warning': coverage_warning,
+                'schedule_url': f'{settings.FRONTEND_URL}/schedule',
+            }
+            
+            html_message = render_to_string('emails/shift_cancelled_by_pa.html', context)
+            plain_message = render_to_string('emails/shift_cancelled_by_pa.txt', context)
+            
+            send_mail(
+                subject=f'⚠️ Shift Cancelled by {shift.requested_by.get_full_name()}',
+                message=plain_message,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[admin.email],
+                html_message=html_message,
+                fail_silently=False,
+            )
+    except Exception as e:
+        print(f"Error sending PA cancellation email: {e}")
+
+
+@shared_task
+def send_shift_cancelled_by_admin_notification(shift_id, cancellation_reason):
+    from .models import ShiftRequest
+    try:
+        shift = ShiftRequest.objects.get(id=shift_id)
+        
+        context = {
+            'pa_name': shift.requested_by.first_name,
+            'date': shift.date.strftime('%B %d, %Y'),
+            'start_time': shift.start_time.strftime('%I:%M %p'),
+            'end_time': shift.end_time.strftime('%I:%M %p'),
+            'cancellation_reason': cancellation_reason,
+            'schedule_url': f'{settings.FRONTEND_URL}/schedule',
+        }
+        
+        html_message = render_to_string('emails/shift_cancelled_by_admin.html', context)
+        plain_message = render_to_string('emails/shift_cancelled_by_admin.txt', context)
+        
+        send_mail(
+            subject='Your Shift Has Been Cancelled',
+            message=plain_message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[shift.requested_by.email],
+            html_message=html_message,
+            fail_silently=False,
+        )
+    except Exception as e:
+        print(f"Error sending admin cancellation email: {e}")
 ```
 
 # ==== apps/shifts/templates/emails/new_request_admin.txt ====
@@ -3515,6 +3881,107 @@ This shift is now part of your schedule. You can view your complete schedule at:
 {{ frontend_url }}/schedule
 
 If you have any questions, please contact your administrator.
+
+Thank you,
+PA Scheduling System
+
+---
+This is an automated message. Please do not reply to this email.
+```
+
+# ==== apps/shifts/templates/emails/shift_cancelled_by_admin.txt ====
+
+```
+
+
+SHIFT CANCELLED
+
+Hi {{ pa_name }},
+
+Your shift has been cancelled by an administrator.
+
+CANCELLED SHIFT DETAILS
+------------------------
+Date: {{ date }}
+Time: {{ start_time }} - {{ end_time }}
+
+{% if cancellation_reason %}REASON FOR CANCELLATION
+-----------------------
+{{ cancellation_reason }}
+{% endif %}
+
+You can view your updated schedule here:
+{{ schedule_url }}
+
+If you have any questions about this cancellation, please contact your administrator.
+
+Thank you,
+PA Scheduling System
+
+---
+This is an automated message. Please do not reply to this email.
+```
+
+# ==== apps/shifts/templates/emails/shift_cancelled_by_pa.txt ====
+
+```
+⚠️ SHIFT CANCELLED BY PA
+
+Hi {{ admin_name }},
+
+{{ pa_name }} has cancelled one of their approved shifts.
+
+CANCELLED SHIFT DETAILS
+------------------------
+PA: {{ pa_name }}
+Date: {{ date }}
+Time: {{ start_time }} - {{ end_time }}
+Duration: {{ duration }} hours
+
+{% if cancellation_reason %}REASON FOR CANCELLATION
+-----------------------
+{{ cancellation_reason }}
+{% endif %}
+
+{% if coverage_warning %}
+{{ coverage_warning }}
+{% endif %}
+
+Please review the schedule and reassign this shift if needed:
+{{ schedule_url }}
+
+---
+This is an automated message. Please do not reply to this email.
+```
+
+# ==== apps/shifts/templates/emails/shift_edited.txt ====
+
+```
+✏️ SHIFT UPDATED
+
+Hi {{ pa_name }},
+
+An admin has updated one of your shifts. Please review the changes below.
+
+ORIGINAL SHIFT
+--------------
+Date: {{ old_date }}
+Time: {{ old_start_time }} - {{ old_end_time }}
+
+NEW SHIFT DETAILS
+-----------------
+Date: {{ new_date }}
+Time: {{ new_start_time }} - {{ new_end_time }}
+
+{% if admin_notes %}ADMIN NOTES
+-----------
+{{ admin_notes }}
+{% endif %}
+
+Please check your updated schedule here:
+{{ schedule_url }}
+
+If you have any questions about this change, please contact your administrator.
 
 Thank you,
 PA Scheduling System
@@ -3650,6 +4117,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
+from datetime import datetime, timedelta
 from .models import ShiftRequest, ShiftSuggestion
 from .serializers import (
     ShiftRequestSerializer, 
@@ -3665,8 +4133,45 @@ from .tasks import (
     send_shift_rejected_email,
     send_shift_suggestion_email, 
     notify_admin_suggestion_accepted, 
-    notify_admin_suggestion_declined
+    notify_admin_suggestion_declined,
+    send_shift_edited_notification,
+    send_shift_cancelled_by_pa_notification,
+    send_shift_cancelled_by_admin_notification
 )
+
+
+def check_time_conflict(date, start_time, end_time, exclude_shift_id=None):
+    """
+    Check if requested time conflicts with any APPROVED shift.
+    Only APPROVED shifts block new requests (PENDING doesn't block).
+    
+    Returns: (has_conflict: bool, conflicting_shift: ShiftRequest or None)
+    """
+    conflicts = ShiftRequest.objects.filter(
+        date=date,
+        status='APPROVED'
+    )
+    
+    if exclude_shift_id:
+        conflicts = conflicts.exclude(id=exclude_shift_id)
+    
+    requested_start = datetime.combine(date, start_time)
+    requested_end = datetime.combine(date, end_time)
+    
+    if requested_end <= requested_start:
+        requested_end += timedelta(days=1)
+    
+    for shift in conflicts:
+        shift_start = datetime.combine(shift.date, shift.start_time)
+        shift_end = datetime.combine(shift.date, shift.end_time)
+        
+        if shift_end <= shift_start:
+            shift_end += timedelta(days=1)
+        
+        if requested_start < shift_end and requested_end > shift_start:
+            return True, shift
+    
+    return False, None
 
 
 class ShiftRequestViewSet(viewsets.ModelViewSet):
@@ -3683,6 +4188,33 @@ class ShiftRequestViewSet(viewsets.ModelViewSet):
             return ShiftRequestCreateSerializer
         return ShiftRequestSerializer
     
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        date = serializer.validated_data['date']
+        start_time = serializer.validated_data['start_time']
+        end_time = serializer.validated_data['end_time']
+        
+        has_conflict, conflicting_shift = check_time_conflict(date, start_time, end_time)
+        
+        if has_conflict:
+            return Response({
+                'error': 'Time slot already taken',
+                'detail': f'This time conflicts with an approved shift by {conflicting_shift.requested_by.get_full_name()} ({conflicting_shift.start_time.strftime("%I:%M %p")} - {conflicting_shift.end_time.strftime("%I:%M %p")})',
+                'conflict': {
+                    'shift_id': conflicting_shift.id,
+                    'pa_name': conflicting_shift.requested_by.get_full_name(),
+                    'date': str(conflicting_shift.date),
+                    'start_time': str(conflicting_shift.start_time),
+                    'end_time': str(conflicting_shift.end_time)
+                }
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        self.perform_create(serializer)
+        headers = self.get_success_url(serializer) if hasattr(self, 'get_success_url') else {}
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+    
     def perform_create(self, serializer):
         shift_request = serializer.save(requested_by=self.request.user)
         send_new_request_email.delay(shift_request.id)
@@ -3695,6 +4227,26 @@ class ShiftRequestViewSet(viewsets.ModelViewSet):
         shift_request = self.get_object()
         if shift_request.status != 'PENDING':
             return Response({'error': 'Can only approve pending requests'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        has_conflict, conflicting_shift = check_time_conflict(
+            shift_request.date,
+            shift_request.start_time,
+            shift_request.end_time,
+            exclude_shift_id=shift_request.id
+        )
+        
+        if has_conflict:
+            return Response({
+                'error': 'Cannot approve - time slot conflict',
+                'detail': f'This shift conflicts with an existing approved shift by {conflicting_shift.requested_by.get_full_name()} ({conflicting_shift.start_time.strftime("%I:%M %p")} - {conflicting_shift.end_time.strftime("%I:%M %p")})',
+                'conflict': {
+                    'shift_id': conflicting_shift.id,
+                    'pa_name': conflicting_shift.requested_by.get_full_name(),
+                    'date': str(conflicting_shift.date),
+                    'start_time': str(conflicting_shift.start_time),
+                    'end_time': str(conflicting_shift.end_time)
+                }
+            }, status=status.HTTP_400_BAD_REQUEST)
         
         shift_request.status = 'APPROVED'
         shift_request.approved_by = request.user
@@ -3723,18 +4275,87 @@ class ShiftRequestViewSet(viewsets.ModelViewSet):
         
         return Response(ShiftRequestSerializer(shift_request).data)
     
+    @action(detail=True, methods=['patch'])
+    def edit(self, request, pk=None):
+        if request.user.role != 'ADMIN':
+            return Response({'error': 'Admin access required'}, status=status.HTTP_403_FORBIDDEN)
+        
+        shift_request = self.get_object()
+        
+        if shift_request.status != 'APPROVED':
+            return Response({'error': 'Can only edit approved shifts'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        new_date = request.data.get('date')
+        new_start_time = request.data.get('start_time')
+        new_end_time = request.data.get('end_time')
+        admin_notes = request.data.get('admin_notes', '')
+        
+        if not all([new_date, new_start_time, new_end_time]):
+            return Response({'error': 'date, start_time, and end_time are required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if isinstance(new_date, str):
+            new_date = datetime.strptime(new_date, '%Y-%m-%d').date()
+        if isinstance(new_start_time, str):
+            new_start_time = datetime.strptime(new_start_time, '%H:%M').time()
+        if isinstance(new_end_time, str):
+            new_end_time = datetime.strptime(new_end_time, '%H:%M').time()
+        
+        has_conflict, conflicting_shift = check_time_conflict(
+            new_date,
+            new_start_time,
+            new_end_time,
+            exclude_shift_id=shift_request.id
+        )
+        
+        if has_conflict:
+            return Response({
+                'error': 'Time slot conflict',
+                'detail': f'This time conflicts with an approved shift by {conflicting_shift.requested_by.get_full_name()} ({conflicting_shift.start_time.strftime("%I:%M %p")} - {conflicting_shift.end_time.strftime("%I:%M %p")})',
+                'conflict': {
+                    'shift_id': conflicting_shift.id,
+                    'pa_name': conflicting_shift.requested_by.get_full_name(),
+                    'date': str(conflicting_shift.date),
+                    'start_time': str(conflicting_shift.start_time),
+                    'end_time': str(conflicting_shift.end_time)
+                }
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        old_date = str(shift_request.date)
+        old_start_time = str(shift_request.start_time)
+        old_end_time = str(shift_request.end_time)
+        
+        shift_request.date = new_date
+        shift_request.start_time = new_start_time
+        shift_request.end_time = new_end_time
+        shift_request.admin_notes = admin_notes
+        shift_request.save()
+        
+        send_shift_edited_notification.delay(shift_request.id, old_date, old_start_time, old_end_time)
+        
+        return Response(ShiftRequestSerializer(shift_request).data)
+    
     @action(detail=True, methods=['post'])
     def cancel(self, request, pk=None):
         shift_request = self.get_object()
+        cancellation_reason = request.data.get('cancellation_reason', '')
         
-        if shift_request.requested_by != request.user:
-            return Response({'error': 'Can only cancel own requests'}, status=status.HTTP_403_FORBIDDEN)
+        if shift_request.status not in ['PENDING', 'APPROVED']:
+            return Response({'error': 'Can only cancel pending or approved shifts'}, status=status.HTTP_400_BAD_REQUEST)
         
-        if shift_request.status != 'PENDING':
-            return Response({'error': 'Can only cancel pending requests'}, status=status.HTTP_400_BAD_REQUEST)
+        is_admin = request.user.role == 'ADMIN'
+        is_owner = shift_request.requested_by == request.user
+        
+        if not is_admin and not is_owner:
+            return Response({'error': 'Can only cancel own shifts'}, status=status.HTTP_403_FORBIDDEN)
         
         shift_request.status = 'CANCELLED'
+        shift_request.cancellation_reason = cancellation_reason
         shift_request.save()
+        
+        if is_owner and not is_admin:
+            send_shift_cancelled_by_pa_notification.delay(shift_request.id, cancellation_reason)
+        elif is_admin:
+            send_shift_cancelled_by_admin_notification.delay(shift_request.id, cancellation_reason)
         
         return Response(ShiftRequestSerializer(shift_request).data)
 
@@ -3764,6 +4385,25 @@ class ShiftSuggestionViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
+        date = serializer.validated_data['date']
+        start_time = serializer.validated_data['start_time']
+        end_time = serializer.validated_data['end_time']
+        
+        has_conflict, conflicting_shift = check_time_conflict(date, start_time, end_time)
+        
+        if has_conflict:
+            return Response({
+                'error': 'Time slot already taken',
+                'detail': f'This time conflicts with an approved shift by {conflicting_shift.requested_by.get_full_name()} ({conflicting_shift.start_time.strftime("%I:%M %p")} - {conflicting_shift.end_time.strftime("%I:%M %p")})',
+                'conflict': {
+                    'shift_id': conflicting_shift.id,
+                    'pa_name': conflicting_shift.requested_by.get_full_name(),
+                    'date': str(conflicting_shift.date),
+                    'start_time': str(conflicting_shift.start_time),
+                    'end_time': str(conflicting_shift.end_time)
+                }
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
         suggestion = serializer.save(suggested_by=request.user)
         send_shift_suggestion_email.delay(suggestion.id)
         
@@ -3778,6 +4418,25 @@ class ShiftSuggestionViewSet(viewsets.ModelViewSet):
         
         if suggestion.status != 'PENDING':
             return Response({'error': 'Suggestion already responded to'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        has_conflict, conflicting_shift = check_time_conflict(
+            suggestion.date,
+            suggestion.start_time,
+            suggestion.end_time
+        )
+        
+        if has_conflict:
+            return Response({
+                'error': 'Cannot accept - time slot now taken',
+                'detail': f'This time now conflicts with an approved shift by {conflicting_shift.requested_by.get_full_name()} ({conflicting_shift.start_time.strftime("%I:%M %p")} - {conflicting_shift.end_time.strftime("%I:%M %p")}). The shift was approved after this suggestion was created.',
+                'conflict': {
+                    'shift_id': conflicting_shift.id,
+                    'pa_name': conflicting_shift.requested_by.get_full_name(),
+                    'date': str(conflicting_shift.date),
+                    'start_time': str(conflicting_shift.start_time),
+                    'end_time': str(conflicting_shift.end_time)
+                }
+            }, status=status.HTTP_400_BAD_REQUEST)
         
         shift_request = ShiftRequest.objects.create(
             schedule_period=suggestion.schedule_period,
