@@ -302,14 +302,11 @@ class WeekViewAPI(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            # Get Monday of the specified week
-            first_day_of_year = datetime(year, 1, 1).date()
-            week_start = first_day_of_year + timedelta(weeks=week-1)
-            
-            # Adjust to Monday
-            while week_start.weekday() != 0:
-                week_start -= timedelta(days=1)
-            
+            # Use ISO 8601 week calculation (matches frontend)
+            # Find a date in that ISO week
+            jan_4 = datetime(year, 1, 4).date()  # Jan 4 is always in week 1
+            week_1_monday = jan_4 - timedelta(days=jan_4.weekday())
+            week_start = week_1_monday + timedelta(weeks=week - 1)
             week_end = week_start + timedelta(days=6)
             
             # Get all approved shifts for this week
@@ -342,17 +339,17 @@ class WeekViewAPI(APIView):
                 hourly_shifts = self._group_shifts_by_hour(day_shifts)
                 
                 days.append({
-                    'date': day_date,
+                    'date': day_date.isoformat(),  # Ensure string format
                     'day_name': day_date.strftime('%A'),
                     'shifts': CalendarShiftSerializer(day_shifts, many=True).data,
                     'hourly_shifts': hourly_shifts,
                     'coverage': coverage,
-                    'total_hours': total_hours
+                    'total_hours': float(total_hours)
                 })
             
             response_data = {
-                'week_start': week_start,
-                'week_end': week_end,
+                'week_start': week_start.isoformat(),
+                'week_end': week_end.isoformat(),
                 'week_number': week,
                 'year': year,
                 'days': days,
@@ -366,7 +363,6 @@ class WeekViewAPI(APIView):
                 {'error': 'Invalid year or week'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-    
     def _get_day_coverage(self, date):
         """Get coverage status for a specific day"""
         try:

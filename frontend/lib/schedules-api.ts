@@ -1,5 +1,13 @@
 import { api } from './api';
 
+// Paginated response from Django REST Framework
+export interface PaginatedResponse<T> {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: T[];
+}
+
 export interface SchedulePeriod {
   id: number;
   name: string;
@@ -20,8 +28,8 @@ export interface CreateSchedulePeriod {
 }
 
 export const schedulesAPI = {
-  // List all periods
-  listPeriods: () => api.get<SchedulePeriod[]>('/api/schedule-periods/'),
+  // List all periods - returns paginated response
+  listPeriods: () => api.get<PaginatedResponse<SchedulePeriod>>('/api/schedule-periods/'),
   
   // Get single period details
   getPeriod: (id: number) => api.get(`/api/schedule-periods/${id}/`),

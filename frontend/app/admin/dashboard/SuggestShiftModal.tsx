@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { suggestionsAPI, CreateSuggestionData } from '@/lib/suggestions-api';
-import { schedulesAPI } from '@/lib/schedules-api';
+import { schedulesAPI, SchedulePeriod } from '@/lib/schedules-api';
 import { api } from '@/lib/api';
 
 interface SuggestShiftModalProps {
@@ -30,7 +30,7 @@ export default function SuggestShiftModal({
   defaultEndTime = '09:00',
 }: SuggestShiftModalProps) {
   const [pas, setPAs] = useState<PA[]>([]);
-  const [periods, setPeriods] = useState<any[]>([]);
+  const [periods, setPeriods] = useState<SchedulePeriod[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
@@ -82,19 +82,25 @@ export default function SuggestShiftModal({
       const response = await schedulesAPI.listPeriods();
       console.log('Periods API Response:', response.data);
       
-      // schedulesAPI.listPeriods() returns data directly, not paginated
-      const periodsData = response.data;
-      const filteredPeriods = Array.isArray(periodsData) 
-        ? periodsData.filter((p: any) => p.status === 'OPEN' || p.status === 'LOCKED')
-        : [];
+      // Handle paginated response from DRF
+      let periodsData: SchedulePeriod[] = [];
+      
+      if (response.data.results && Array.isArray(response.data.results)) {
+        periodsData = response.data.results;
+      } else if (Array.isArray(response.data)) {
+        periodsData = response.data;
+      }
+      
+      // Filter for OPEN periods only (as per your requirement)
+      const filteredPeriods = periodsData.filter((p) => p.status === 'OPEN');
       
       setPeriods(filteredPeriods);
       
+      // Auto-select first open period
       if (filteredPeriods.length > 0 && !formData.schedule_period) {
-        const openPeriod = filteredPeriods.find((p: any) => p.status === 'OPEN');
         setFormData(prev => ({
           ...prev,
-          schedule_period: String(openPeriod?.id || filteredPeriods[0].id),
+          schedule_period: String(filteredPeriods[0].id),
         }));
       }
     } catch (err) {
@@ -217,6 +223,9 @@ export default function SuggestShiftModal({
                       </option>
                     ))}
                   </select>
+                  {periods.length === 0 && (
+                    <p className="mt-1 text-sm text-gray-500">Loading periods...</p>
+                  )}
                 </div>
 
                 <div>
