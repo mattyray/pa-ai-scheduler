@@ -5,9 +5,9 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { getPAColor } from '@/lib/pa-colors';
 import SuggestShiftModal from '@/app/admin/dashboard/SuggestShiftModal';
+import { shiftsAPI } from '@/lib/shifts-api';
 import { api } from '@/lib/api';
 
-// Helper function to convert 24h time to 12h format
 function formatTime12Hour(time24: string): string {
   const [hours, minutes] = time24.split(':').map(Number);
   const period = hours >= 12 ? 'PM' : 'AM';
@@ -15,7 +15,6 @@ function formatTime12Hour(time24: string): string {
   return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
 }
 
-// Helper function to format hour for display
 function formatHour12(hour: number): string {
   const period = hour >= 12 ? 'PM' : 'AM';
   const hours12 = hour % 12 || 12;
@@ -42,6 +41,9 @@ export default function SchedulePage() {
     startTime: '06:00',
     endTime: '09:00',
   });
+
+  const [approveModalOpen, setApproveModalOpen] = useState(false);
+  const [selectedShift, setSelectedShift] = useState<any>(null);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -117,17 +119,18 @@ export default function SchedulePage() {
     
     try {
       let response;
+      const paFilter = user?.role === 'PA' ? `?pa_id=${user.id}` : '';
       
       if (viewType === 'month') {
         const year = currentDate.getFullYear();
         const month = currentDate.getMonth() + 1;
-        response = await api.get(`/api/schedule-periods/calendar/month/${year}/${month}/`);
+        response = await api.get(`/api/calendar/month/${year}/${month}/${paFilter}`);
       } else if (viewType === 'week') {
         const { year, week } = getISOWeek(currentDate);
-        response = await api.get(`/api/schedule-periods/calendar/week/${year}/${week}/`);
+        response = await api.get(`/api/calendar/week/${year}/${week}/${paFilter}`);
       } else {
         const dateStr = currentDate.toISOString().split('T')[0];
-        response = await api.get(`/api/schedule-periods/calendar/day/${dateStr}/`);
+        response = await api.get(`/api/calendar/day/${dateStr}/${paFilter}`);
       }
       
       setCalendarData(response.data);
@@ -190,6 +193,13 @@ export default function SchedulePage() {
   const handleWeekDayClick = (date: string) => {
     setCurrentDate(new Date(date));
     setViewType('day');
+  };
+
+  const handleShiftClick = (shift: any) => {
+    if (shift.status === 'PENDING' && user?.role === 'ADMIN') {
+      setSelectedShift(shift);
+      setApproveModalOpen(true);
+    }
   };
 
   const openSuggestModal = (date?: string, startTime?: string, endTime?: string) => {
@@ -355,32 +365,48 @@ export default function SchedulePage() {
             <p className="text-gray-500">No data available</p>
           </div>
         ) : viewType === 'month' ? (
-          <MonthView data={calendarData} onDayClick={handleMonthDayClick} />
+          <MonthView data={calendarData} onDayClick={handleMonthDayClick} onShiftClick={handleShiftClick} isAdmin={user?.role === 'ADMIN'} />
         ) : viewType === 'week' ? (
-          <WeekView data={calendarData} onDayClick={handleWeekDayClick} onSuggestShift={openSuggestModal} isAdmin={user?.role === 'ADMIN'} />
+          <WeekView data={calendarData} onDayClick={handleWeekDayClick} onSuggestShift={openSuggestModal} onShiftClick={handleShiftClick} isAdmin={user?.role === 'ADMIN'} />
         ) : (
-          <DayView data={calendarData} onSuggestShift={openSuggestModal} isAdmin={user?.role === 'ADMIN'} />
+          <DayView data={calendarData} onSuggestShift={openSuggestModal} onShiftClick={handleShiftClick} isAdmin={user?.role === 'ADMIN'} />
         )}
       </div>
 
       {user?.role === 'ADMIN' && (
-        <SuggestShiftModal
-          isOpen={suggestModalOpen}
-          onClose={() => setSuggestModalOpen(false)}
-          onSuccess={() => {
-            setSuggestModalOpen(false);
-            loadCalendarData();
-          }}
-          defaultDate={suggestModalDefaults.date}
-          defaultStartTime={suggestModalDefaults.startTime}
-          defaultEndTime={suggestModalDefaults.endTime}
-        />
+        <>
+          <SuggestShiftModal
+            isOpen={suggestModalOpen}
+            onClose={() => setSuggestModalOpen(false)}
+            onSuccess={() => {
+              setSuggestModalOpen(false);
+              loadCalendarData();
+            }}
+            defaultDate={suggestModalDefaults.date}
+            defaultStartTime={suggestModalDefaults.startTime}
+            defaultEndTime={suggestModalDefaults.endTime}
+          />
+          
+          <ApproveRejectModal
+            isOpen={approveModalOpen}
+            shift={selectedShift}
+            onClose={() => {
+              setApproveModalOpen(false);
+              setSelectedShift(null);
+            }}
+            onSuccess={() => {
+              setApproveModalOpen(false);
+              setSelectedShift(null);
+              loadCalendarData();
+            }}
+          />
+        </>
       )}
     </div>
   );
 }
 
-function MonthView({ data, onDayClick }: { data: any; onDayClick: (date: string) => void }) {
+function MonthView({ data, onDayClick, onShiftClick, isAdmin }: { data: any; onDayClick: (date: string) => void; onShiftClick: (shift: any) => void; isAdmin?: boolean }) {
   const getCoverageStatus = (coverage: any): string => {
     if (!coverage) return 'none';
     if (coverage.morning_covered && coverage.evening_covered) return 'full';
@@ -416,20 +442,24 @@ function MonthView({ data, onDayClick }: { data: any; onDayClick: (date: string)
             return (
               <div
                 key={`${weekIdx}-${dayIdx}`}
-                onClick={() => onDayClick(day.date)}
-                className={`min-h-24 sm:min-h-32 border-b border-r border-gray-200 p-2 cursor-pointer hover:bg-gray-50 transition-colors ${getCoverageBorder(coverageStatus)} ${
+                className={`min-h-24 sm:min-h-32 border-b border-r border-gray-200 p-2 ${getCoverageBorder(coverageStatus)} ${
                   !day.is_current_month ? 'bg-gray-50/50 opacity-40' : 'bg-white'
                 } ${isToday ? 'ring-2 ring-inset ring-blue-500' : ''}`}
               >
-                <div className="flex items-center justify-between mb-1">
-                  <span className={`text-sm sm:text-base font-semibold ${isToday ? 'text-blue-600' : 'text-gray-900'}`}>
-                    {date.getDate()}
-                  </span>
-                  {shifts.length > 0 && (
-                    <span className="text-xs font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
-                      {shifts.length}
+                <div 
+                  onClick={() => onDayClick(day.date)}
+                  className="cursor-pointer hover:bg-gray-50 rounded transition-colors"
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className={`text-sm sm:text-base font-semibold ${isToday ? 'text-blue-600' : 'text-gray-900'}`}>
+                      {date.getDate()}
                     </span>
-                  )}
+                    {shifts.length > 0 && (
+                      <span className="text-xs font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+                        {shifts.length}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="space-y-1">
@@ -438,15 +468,36 @@ function MonthView({ data, onDayClick }: { data: any; onDayClick: (date: string)
                     const initials = paName.split(' ').map((n: string) => n[0]).join('').toUpperCase();
                     const paId = shift.requested_by || idx;
                     const color = getPAColor(paId);
+                    const isPending = shift.status === 'PENDING';
 
                     return (
                       <div
                         key={idx}
-                        className="text-xs px-1.5 py-1 rounded truncate"
-                        style={{ backgroundColor: color, color: '#fff' }}
-                        title={`${paName}: ${formatTime12Hour(shift.start_time)} - ${formatTime12Hour(shift.end_time)}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (isPending && isAdmin) {
+                            onShiftClick(shift);
+                          }
+                        }}
+                        className={`text-xs px-1.5 py-1 rounded truncate transition-all ${
+                          isPending 
+                            ? 'border-2 border-dashed cursor-pointer hover:scale-105' 
+                            : ''
+                        }`}
+                        style={isPending ? {
+                          backgroundColor: color + '30',
+                          borderColor: color,
+                          color: color,
+                        } : {
+                          backgroundColor: color,
+                          color: '#fff',
+                        }}
+                        title={`${paName}: ${formatTime12Hour(shift.start_time)} - ${formatTime12Hour(shift.end_time)} ${isPending ? '(PENDING - Click to approve/reject)' : ''}`}
                       >
-                        <span className="font-medium">{initials}</span>
+                        <span className="font-medium">
+                          {isPending && '⏳ '}
+                          {initials}
+                        </span>
                         <span className="hidden sm:inline ml-1 opacity-90">{formatTime12Hour(shift.start_time).replace(' ', '')}</span>
                       </div>
                     );
@@ -465,23 +516,23 @@ function MonthView({ data, onDayClick }: { data: any; onDayClick: (date: string)
 
       <div className="border-t border-gray-200 px-4 py-3 bg-gray-50 flex flex-wrap gap-4 text-xs sm:text-sm">
         <div className="flex items-center space-x-2">
+          <div className="w-3 h-3 bg-blue-500"></div>
+          <span className="text-gray-700">Approved</span>
+        </div>
+        <div className="flex items-center space-x-2">
+          <div className="w-3 h-3 bg-blue-100 border-2 border-dashed border-blue-500"></div>
+          <span className="text-gray-700">Pending</span>
+        </div>
+        <div className="flex items-center space-x-2">
           <div className="w-3 h-3 border-l-4 border-l-green-500 bg-white"></div>
           <span className="text-gray-700">Full coverage</span>
-        </div>
-        <div className="flex items-center space-x-2">
-          <div className="w-3 h-3 border-l-4 border-l-yellow-500 bg-white"></div>
-          <span className="text-gray-700">Partial coverage</span>
-        </div>
-        <div className="flex items-center space-x-2">
-          <div className="w-3 h-3 border-l-4 border-l-red-400 bg-white"></div>
-          <span className="text-gray-700">No critical coverage</span>
         </div>
       </div>
     </div>
   );
 }
 
-function WeekView({ data, onDayClick, onSuggestShift, isAdmin }: { data: any; onDayClick: (date: string) => void; onSuggestShift: (date: string) => void; isAdmin?: boolean }) {
+function WeekView({ data, onDayClick, onSuggestShift, onShiftClick, isAdmin }: { data: any; onDayClick: (date: string) => void; onSuggestShift: (date: string) => void; onShiftClick: (shift: any) => void; isAdmin?: boolean }) {
   const hours = Array.from({ length: 24 }, (_, i) => i);
   const days = data.days || [];
 
@@ -551,20 +602,41 @@ function WeekView({ data, onDayClick, onSuggestShift, isAdmin }: { data: any; on
                           const paName = shift.requested_by_name || shift.requested_by || 'Unknown';
                           const paId = shift.requested_by || shift.id;
                           const color = getPAColor(paId);
+                          const isPending = shift.status === 'PENDING';
 
                           return (
                             <div
                               key={shift.id}
-                              className="absolute inset-x-1 rounded px-2 py-1 text-xs font-medium text-white shadow-sm z-10 flex flex-col justify-between"
-                              style={{
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (isPending && isAdmin) {
+                                  onShiftClick(shift);
+                                }
+                              }}
+                              className={`absolute inset-x-1 rounded px-2 py-1 text-xs font-medium shadow-sm z-10 flex flex-col justify-between transition-all ${
+                                isPending 
+                                  ? 'border-2 border-dashed cursor-pointer hover:scale-105' 
+                                  : 'text-white'
+                              }`}
+                              style={isPending ? {
+                                backgroundColor: color + '30',
+                                borderColor: color,
+                                color: color,
+                                top: '0.25rem',
+                                height: `${shift.duration_hours * 3}rem`,
+                              } : {
                                 backgroundColor: color,
+                                color: '#fff',
                                 top: '0.25rem',
                                 height: `${shift.duration_hours * 3}rem`,
                               }}
-                              title={`${paName}: ${formatTime12Hour(shift.start_time)} - ${formatTime12Hour(shift.end_time)}`}
+                              title={`${paName}: ${formatTime12Hour(shift.start_time)} - ${formatTime12Hour(shift.end_time)} ${isPending ? '(PENDING)' : ''}`}
                             >
                               <div>
-                                <div className="truncate font-semibold">{paName.split(' ')[0]}</div>
+                                <div className="truncate font-semibold">
+                                  {isPending && '⏳ '}
+                                  {paName.split(' ')[0]}
+                                </div>
                                 <div className="text-xs opacity-90">{formatTime12Hour(shift.start_time)}</div>
                               </div>
                               <div className="text-xs opacity-90 text-right">{formatTime12Hour(shift.end_time)}</div>
@@ -581,17 +653,23 @@ function WeekView({ data, onDayClick, onSuggestShift, isAdmin }: { data: any; on
         </div>
       </div>
 
-      <div className="border-t border-gray-200 px-4 py-3 bg-gray-50 text-xs text-gray-600">
+      <div className="border-t border-gray-200 px-4 py-3 bg-gray-50 text-xs text-gray-600 flex gap-4">
         <span className="inline-flex items-center space-x-1">
           <div className="w-3 h-3 bg-yellow-50 border border-yellow-200"></div>
-          <span>Critical times (6-9 AM, 9-10 PM)</span>
+          <span>Critical times</span>
         </span>
+        {isAdmin && (
+          <span className="inline-flex items-center space-x-1">
+            <div className="w-3 h-3 bg-blue-100 border-2 border-dashed border-blue-500"></div>
+            <span>Click pending to approve/reject</span>
+          </span>
+        )}
       </div>
     </div>
   );
 }
 
-function DayView({ data, onSuggestShift, isAdmin }: { data: any; onSuggestShift: (date: string, startTime?: string, endTime?: string) => void; isAdmin?: boolean }) {
+function DayView({ data, onSuggestShift, onShiftClick, isAdmin }: { data: any; onSuggestShift: (date: string, startTime?: string, endTime?: string) => void; onShiftClick: (shift: any) => void; isAdmin?: boolean }) {
   const hours = Array.from({ length: 24 }, (_, i) => i);
   const shifts = data.shifts || [];
   const coverage = data.coverage || {};
@@ -630,7 +708,6 @@ function DayView({ data, onSuggestShift, isAdmin }: { data: any; onSuggestShift:
             {hours.map((hour) => {
               const isCriticalTime = (hour >= 6 && hour < 9) || (hour >= 21 && hour < 22);
               
-              // Find shifts that START at this hour
               const shiftsStartingThisHour = shifts.filter((shift: any) => {
                 const startHour = parseInt(shift.start_time.split(':')[0]);
                 return hour === startHour;
@@ -652,19 +729,41 @@ function DayView({ data, onSuggestShift, isAdmin }: { data: any; onSuggestShift:
                       const paName = shift.requested_by_name || shift.requested_by || 'Unknown';
                       const paId = shift.requested_by || shift.id;
                       const color = getPAColor(paId);
+                      const isPending = shift.status === 'PENDING';
 
                       return (
                         <div
                           key={shift.id}
-                          className="absolute inset-x-2 rounded-lg px-4 py-2 text-white shadow-md flex flex-col justify-between"
-                          style={{
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (isPending && isAdmin) {
+                              onShiftClick(shift);
+                            }
+                          }}
+                          className={`absolute inset-x-2 rounded-lg px-4 py-2 shadow-md flex flex-col justify-between transition-all ${
+                            isPending 
+                              ? 'border-2 border-dashed cursor-pointer hover:scale-105' 
+                              : 'text-white'
+                          }`}
+                          style={isPending ? {
+                            backgroundColor: color + '30',
+                            borderColor: color,
+                            color: color,
+                            top: '0.5rem',
+                            height: `${shift.duration_hours * 3}rem`,
+                          } : {
                             backgroundColor: color,
+                            color: '#fff',
                             top: '0.5rem',
                             height: `${shift.duration_hours * 3}rem`,
                           }}
                         >
                           <div>
-                            <div className="font-bold text-base">{paName}</div>
+                            <div className="font-bold text-base">
+                              {isPending && '⏳ '}
+                              {paName}
+                              {isPending && <span className="ml-2 text-xs font-normal">(Pending)</span>}
+                            </div>
                             <div className="text-sm opacity-90 mt-1">{formatTime12Hour(shift.start_time)}</div>
                           </div>
                           <div className="text-sm opacity-90 text-right font-medium">{formatTime12Hour(shift.end_time)}</div>
@@ -675,6 +774,172 @@ function DayView({ data, onSuggestShift, isAdmin }: { data: any; onSuggestShift:
                 </div>
               );
             })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ApproveRejectModal({ isOpen, shift, onClose, onSuccess }: { isOpen: boolean; shift: any; onClose: () => void; onSuccess: () => void }) {
+  const [loading, setLoading] = useState(false);
+  const [adminNotes, setAdminNotes] = useState('');
+  const [rejectedReason, setRejectedReason] = useState('');
+  const [mode, setMode] = useState<'choose' | 'approve' | 'reject'>('choose');
+
+  useEffect(() => {
+    if (isOpen) {
+      setMode('choose');
+      setAdminNotes('');
+      setRejectedReason('');
+    }
+  }, [isOpen]);
+
+  const handleApprove = async () => {
+    try {
+      setLoading(true);
+      await shiftsAPI.approveRequest(shift.id, adminNotes);
+      onSuccess();
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Failed to approve request');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReject = async () => {
+    if (!rejectedReason.trim()) {
+      alert('Please provide a reason for rejection');
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      await shiftsAPI.rejectRequest(shift.id, rejectedReason);
+      onSuccess();
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Failed to reject request');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!isOpen || !shift) return null;
+
+  return (
+    <div className="fixed inset-0 z-[9999] overflow-y-auto">
+      <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+        <div 
+          className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" 
+          onClick={onClose}
+        />
+
+        <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full relative z-[9999]">
+          <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              {mode === 'choose' && 'Review Shift Request'}
+              {mode === 'approve' && 'Approve Shift Request'}
+              {mode === 'reject' && 'Reject Shift Request'}
+            </h3>
+
+            <div className="mb-4 p-4 bg-gray-50 rounded-lg">
+              <p className="text-sm font-medium text-gray-900">PA: {shift.requested_by_name}</p>
+              <p className="text-sm text-gray-600">Date: {new Date(shift.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</p>
+              <p className="text-sm text-gray-600">Time: {formatTime12Hour(shift.start_time)} - {formatTime12Hour(shift.end_time)} ({shift.duration_hours}h)</p>
+              {shift.notes && (
+                <p className="text-sm text-gray-600 mt-2 italic">Notes: "{shift.notes}"</p>
+              )}
+            </div>
+
+            {mode === 'choose' && (
+              <div className="space-y-3">
+                <button
+                  onClick={() => setMode('approve')}
+                  className="w-full px-4 py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors"
+                >
+                  ✓ Approve Request
+                </button>
+                <button
+                  onClick={() => setMode('reject')}
+                  className="w-full px-4 py-3 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  ✗ Reject Request
+                </button>
+                <button
+                  onClick={onClose}
+                  className="w-full px-4 py-3 bg-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-300 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+
+            {mode === 'approve' && (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Admin Notes (Optional)
+                  </label>
+                  <textarea
+                    value={adminNotes}
+                    onChange={(e) => setAdminNotes(e.target.value)}
+                    rows={3}
+                    placeholder="Any notes for this approval..."
+                    className="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                </div>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={handleApprove}
+                    disabled={loading}
+                    className="flex-1 px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 disabled:opacity-50"
+                  >
+                    {loading ? 'Approving...' : 'Confirm Approval'}
+                  </button>
+                  <button
+                    onClick={() => setMode('choose')}
+                    disabled={loading}
+                    className="px-4 py-2 bg-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-300"
+                  >
+                    Back
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {mode === 'reject' && (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Rejection Reason *
+                  </label>
+                  <textarea
+                    value={rejectedReason}
+                    onChange={(e) => setRejectedReason(e.target.value)}
+                    rows={3}
+                    required
+                    placeholder="Please explain why this request is being rejected..."
+                    className="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-red-500"
+                  />
+                </div>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={handleReject}
+                    disabled={loading}
+                    className="flex-1 px-4 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {loading ? 'Rejecting...' : 'Confirm Rejection'}
+                  </button>
+                  <button
+                    onClick={() => setMode('choose')}
+                    disabled={loading}
+                    className="px-4 py-2 bg-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-300"
+                  >
+                    Back
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

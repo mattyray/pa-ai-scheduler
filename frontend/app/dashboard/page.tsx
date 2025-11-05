@@ -133,7 +133,7 @@ export default function PADashboard() {
                   Welcome, {user?.first_name}!
                 </h2>
                 <p className="text-gray-600">
-                  Personal Assistant Dashboard
+                  Personal Assistant Dashboard - View your approved and pending shifts on the calendar
                 </p>
               </div>
             </div>
@@ -260,7 +260,7 @@ export default function PADashboard() {
                   </div>
                   <div className="ml-5 text-left">
                     <h4 className="text-lg font-medium text-gray-900">View Schedule</h4>
-                    <p className="text-sm text-gray-500">See all shifts</p>
+                    <p className="text-sm text-gray-500">See approved & pending shifts</p>
                   </div>
                 </div>
               </div>
