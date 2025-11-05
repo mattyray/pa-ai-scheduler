@@ -135,12 +135,16 @@ class SchedulePeriodViewSet(viewsets.ModelViewSet):
 class MonthViewAPI(APIView):
     """
     GET /api/calendar/month/{year}/{month}/
-    Returns all approved shifts for a given month in calendar format
+    Returns approved AND pending shifts for a given month in calendar format
+    
+    Query params:
+    - pa_id: Filter by specific PA
+    - status: Filter by status (APPROVED, PENDING, etc.) - defaults to both APPROVED and PENDING
     """
     permission_classes = [permissions.IsAuthenticated]
     
     def get(self, request, year, month):
-        """Get month view data"""
+        """Get month view data with both approved and pending shifts"""
         try:
             year = int(year)
             month = int(month)
@@ -155,12 +159,25 @@ class MonthViewAPI(APIView):
             first_day = datetime(year, month, 1).date()
             last_day = datetime(year, month, monthrange(year, month)[1]).date()
             
-            # Get all approved shifts for this month
-            shifts = ShiftRequest.objects.filter(
-                date__gte=first_day,
-                date__lte=last_day,
-                status='APPROVED'
-            ).select_related('requested_by', 'schedule_period').order_by('date', 'start_time')
+            # Get status filter (optional)
+            status_filter = request.query_params.get('status')
+            
+            if status_filter:
+                # Filter by specific status if provided
+                shifts = ShiftRequest.objects.filter(
+                    date__gte=first_day,
+                    date__lte=last_day,
+                    status=status_filter.upper()
+                )
+            else:
+                # Default: show both APPROVED and PENDING
+                shifts = ShiftRequest.objects.filter(
+                    date__gte=first_day,
+                    date__lte=last_day,
+                    status__in=['APPROVED', 'PENDING']
+                )
+            
+            shifts = shifts.select_related('requested_by', 'schedule_period').order_by('date', 'start_time')
             
             # Optional: Filter by PA
             pa_id = request.query_params.get('pa_id')
@@ -286,12 +303,16 @@ class MonthViewAPI(APIView):
 class WeekViewAPI(APIView):
     """
     GET /api/calendar/week/{year}/{week}/
-    Returns all approved shifts for a given week (ISO week number)
+    Returns approved AND pending shifts for a given week (ISO week number)
+    
+    Query params:
+    - pa_id: Filter by specific PA
+    - status: Filter by status (APPROVED, PENDING, etc.) - defaults to both APPROVED and PENDING
     """
     permission_classes = [permissions.IsAuthenticated]
     
     def get(self, request, year, week):
-        """Get week view data"""
+        """Get week view data with both approved and pending shifts"""
         try:
             year = int(year)
             week = int(week)
@@ -308,12 +329,25 @@ class WeekViewAPI(APIView):
             week_start = week_1_monday + timedelta(weeks=week - 1)
             week_end = week_start + timedelta(days=6)
             
-            # Get all approved shifts for this week
-            shifts = ShiftRequest.objects.filter(
-                date__gte=week_start,
-                date__lte=week_end,
-                status='APPROVED'
-            ).select_related('requested_by', 'schedule_period').order_by('date', 'start_time')
+            # Get status filter (optional)
+            status_filter = request.query_params.get('status')
+            
+            if status_filter:
+                # Filter by specific status if provided
+                shifts = ShiftRequest.objects.filter(
+                    date__gte=week_start,
+                    date__lte=week_end,
+                    status=status_filter.upper()
+                )
+            else:
+                # Default: show both APPROVED and PENDING
+                shifts = ShiftRequest.objects.filter(
+                    date__gte=week_start,
+                    date__lte=week_end,
+                    status__in=['APPROVED', 'PENDING']
+                )
+            
+            shifts = shifts.select_related('requested_by', 'schedule_period').order_by('date', 'start_time')
             
             # Optional: Filter by PA
             pa_id = request.query_params.get('pa_id')
@@ -358,6 +392,7 @@ class WeekViewAPI(APIView):
                 {'error': 'Invalid year or week'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+    
     def _get_day_coverage(self, date):
         """Get coverage status for a specific day"""
         try:
@@ -392,21 +427,37 @@ class WeekViewAPI(APIView):
 class DayViewAPI(APIView):
     """
     GET /api/calendar/day/{date}/
-    Returns all approved shifts for a specific day with hourly breakdown
+    Returns approved AND pending shifts for a specific day with hourly breakdown
     Date format: YYYY-MM-DD
+    
+    Query params:
+    - pa_id: Filter by specific PA
+    - status: Filter by status (APPROVED, PENDING, etc.) - defaults to both APPROVED and PENDING
     """
     permission_classes = [permissions.IsAuthenticated]
     
     def get(self, request, date):
-        """Get day view data"""
+        """Get day view data with both approved and pending shifts"""
         try:
             day_date = datetime.strptime(date, '%Y-%m-%d').date()
             
-            # Get all approved shifts for this day
-            shifts = ShiftRequest.objects.filter(
-                date=day_date,
-                status='APPROVED'
-            ).select_related('requested_by', 'schedule_period').order_by('start_time')
+            # Get status filter (optional)
+            status_filter = request.query_params.get('status')
+            
+            if status_filter:
+                # Filter by specific status if provided
+                shifts = ShiftRequest.objects.filter(
+                    date=day_date,
+                    status=status_filter.upper()
+                )
+            else:
+                # Default: show both APPROVED and PENDING
+                shifts = ShiftRequest.objects.filter(
+                    date=day_date,
+                    status__in=['APPROVED', 'PENDING']
+                )
+            
+            shifts = shifts.select_related('requested_by', 'schedule_period').order_by('start_time')
             
             # Optional: Filter by PA
             pa_id = request.query_params.get('pa_id')

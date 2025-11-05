@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
+from datetime import datetime, timedelta
 from .models import ShiftRequest, ShiftSuggestion
 from .serializers import (
     ShiftRequestSerializer, 
@@ -22,6 +23,46 @@ from .tasks import (
 )
 
 
+def check_time_conflict(date, start_time, end_time, exclude_shift_id=None):
+    """
+    Check if requested time conflicts with any APPROVED shift.
+    Only APPROVED shifts block new requests (PENDING doesn't block).
+    
+    Returns: (has_conflict: bool, conflicting_shift: ShiftRequest or None)
+    """
+    # Get all approved shifts on this date
+    conflicts = ShiftRequest.objects.filter(
+        date=date,
+        status='APPROVED'
+    )
+    
+    # Exclude current shift if updating
+    if exclude_shift_id:
+        conflicts = conflicts.exclude(id=exclude_shift_id)
+    
+    # Check each approved shift for time overlap
+    requested_start = datetime.combine(date, start_time)
+    requested_end = datetime.combine(date, end_time)
+    
+    # Handle overnight shifts
+    if requested_end <= requested_start:
+        requested_end += timedelta(days=1)
+    
+    for shift in conflicts:
+        shift_start = datetime.combine(shift.date, shift.start_time)
+        shift_end = datetime.combine(shift.date, shift.end_time)
+        
+        # Handle overnight shifts
+        if shift_end <= shift_start:
+            shift_end += timedelta(days=1)
+        
+        # Check for overlap: (StartA < EndB) and (EndA > StartB)
+        if requested_start < shift_end and requested_end > shift_start:
+            return True, shift
+    
+    return False, None
+
+
 class ShiftRequestViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     
@@ -36,6 +77,36 @@ class ShiftRequestViewSet(viewsets.ModelViewSet):
             return ShiftRequestCreateSerializer
         return ShiftRequestSerializer
     
+    def create(self, request, *args, **kwargs):
+        """Create new shift request with conflict checking"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        # Check for time conflicts
+        date = serializer.validated_data['date']
+        start_time = serializer.validated_data['start_time']
+        end_time = serializer.validated_data['end_time']
+        
+        has_conflict, conflicting_shift = check_time_conflict(date, start_time, end_time)
+        
+        if has_conflict:
+            return Response({
+                'error': 'Time slot already taken',
+                'detail': f'This time conflicts with an approved shift by {conflicting_shift.requested_by.get_full_name()} ({conflicting_shift.start_time.strftime("%I:%M %p")} - {conflicting_shift.end_time.strftime("%I:%M %p")})',
+                'conflict': {
+                    'shift_id': conflicting_shift.id,
+                    'pa_name': conflicting_shift.requested_by.get_full_name(),
+                    'date': str(conflicting_shift.date),
+                    'start_time': str(conflicting_shift.start_time),
+                    'end_time': str(conflicting_shift.end_time)
+                }
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # No conflict, proceed with creation
+        self.perform_create(serializer)
+        headers = self.get_success_url(serializer) if hasattr(self, 'get_success_url') else {}
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+    
     def perform_create(self, serializer):
         shift_request = serializer.save(requested_by=self.request.user)
         send_new_request_email.delay(shift_request.id)
@@ -48,6 +119,27 @@ class ShiftRequestViewSet(viewsets.ModelViewSet):
         shift_request = self.get_object()
         if shift_request.status != 'PENDING':
             return Response({'error': 'Can only approve pending requests'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check for conflicts before approving
+        has_conflict, conflicting_shift = check_time_conflict(
+            shift_request.date,
+            shift_request.start_time,
+            shift_request.end_time,
+            exclude_shift_id=shift_request.id
+        )
+        
+        if has_conflict:
+            return Response({
+                'error': 'Cannot approve - time slot conflict',
+                'detail': f'This shift conflicts with an existing approved shift by {conflicting_shift.requested_by.get_full_name()} ({conflicting_shift.start_time.strftime("%I:%M %p")} - {conflicting_shift.end_time.strftime("%I:%M %p")})',
+                'conflict': {
+                    'shift_id': conflicting_shift.id,
+                    'pa_name': conflicting_shift.requested_by.get_full_name(),
+                    'date': str(conflicting_shift.date),
+                    'start_time': str(conflicting_shift.start_time),
+                    'end_time': str(conflicting_shift.end_time)
+                }
+            }, status=status.HTTP_400_BAD_REQUEST)
         
         shift_request.status = 'APPROVED'
         shift_request.approved_by = request.user
@@ -117,6 +209,26 @@ class ShiftSuggestionViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
+        # Check for conflicts before creating suggestion
+        date = serializer.validated_data['date']
+        start_time = serializer.validated_data['start_time']
+        end_time = serializer.validated_data['end_time']
+        
+        has_conflict, conflicting_shift = check_time_conflict(date, start_time, end_time)
+        
+        if has_conflict:
+            return Response({
+                'error': 'Time slot already taken',
+                'detail': f'This time conflicts with an approved shift by {conflicting_shift.requested_by.get_full_name()} ({conflicting_shift.start_time.strftime("%I:%M %p")} - {conflicting_shift.end_time.strftime("%I:%M %p")})',
+                'conflict': {
+                    'shift_id': conflicting_shift.id,
+                    'pa_name': conflicting_shift.requested_by.get_full_name(),
+                    'date': str(conflicting_shift.date),
+                    'start_time': str(conflicting_shift.start_time),
+                    'end_time': str(conflicting_shift.end_time)
+                }
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
         suggestion = serializer.save(suggested_by=request.user)
         send_shift_suggestion_email.delay(suggestion.id)
         
@@ -131,6 +243,26 @@ class ShiftSuggestionViewSet(viewsets.ModelViewSet):
         
         if suggestion.status != 'PENDING':
             return Response({'error': 'Suggestion already responded to'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check for conflicts before accepting (creates a shift request)
+        has_conflict, conflicting_shift = check_time_conflict(
+            suggestion.date,
+            suggestion.start_time,
+            suggestion.end_time
+        )
+        
+        if has_conflict:
+            return Response({
+                'error': 'Cannot accept - time slot now taken',
+                'detail': f'This time now conflicts with an approved shift by {conflicting_shift.requested_by.get_full_name()} ({conflicting_shift.start_time.strftime("%I:%M %p")} - {conflicting_shift.end_time.strftime("%I:%M %p")}). The shift was approved after this suggestion was created.',
+                'conflict': {
+                    'shift_id': conflicting_shift.id,
+                    'pa_name': conflicting_shift.requested_by.get_full_name(),
+                    'date': str(conflicting_shift.date),
+                    'start_time': str(conflicting_shift.start_time),
+                    'end_time': str(conflicting_shift.end_time)
+                }
+            }, status=status.HTTP_400_BAD_REQUEST)
         
         shift_request = ShiftRequest.objects.create(
             schedule_period=suggestion.schedule_period,

@@ -22,6 +22,7 @@ class ShiftRequest(models.Model):
     notes = models.TextField(blank=True)
     admin_notes = models.TextField(blank=True)
     rejected_reason = models.TextField(blank=True)
+    cancellation_reason = models.TextField(blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     approved_at = models.DateTimeField(null=True, blank=True)
