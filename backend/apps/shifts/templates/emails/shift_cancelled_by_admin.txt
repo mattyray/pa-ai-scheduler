@@ -1,0 +1,28 @@
+
+
+SHIFT CANCELLED
+
+Hi {{ pa_name }},
+
+Your shift has been cancelled by an administrator.
+
+CANCELLED SHIFT DETAILS
+------------------------
+Date: {{ date }}
+Time: {{ start_time }} - {{ end_time }}
+
+{% if cancellation_reason %}REASON FOR CANCELLATION
+-----------------------
+{{ cancellation_reason }}
+{% endif %}
+
+You can view your updated schedule here:
+{{ schedule_url }}
+
+If you have any questions about this cancellation, please contact your administrator.
+
+Thank you,
+PA Scheduling System
+
+---
+This is an automated message. Please do not reply to this email.
