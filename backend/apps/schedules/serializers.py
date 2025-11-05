@@ -77,17 +77,16 @@ class SchedulePeriodCreateUpdateSerializer(serializers.ModelSerializer):
 
 class CalendarShiftSerializer(serializers.ModelSerializer):
     """Simplified shift serializer for calendar views"""
-    pa_name = serializers.CharField(source='requested_by.get_full_name', read_only=True)
-    pa_id = serializers.IntegerField(source='requested_by.id', read_only=True)
+    requested_by_name = serializers.CharField(source='requested_by.get_full_name', read_only=True)
+    requested_by = serializers.IntegerField(source='requested_by.id', read_only=True)
     
     class Meta:
         model = ShiftRequest
         fields = [
-            'id', 'pa_id', 'pa_name', 'date', 
+            'id', 'requested_by', 'requested_by_name', 'date', 
             'start_time', 'end_time', 'duration_hours',
             'notes', 'status'
         ]
-
 
 class DayScheduleSerializer(serializers.Serializer):
     """Serializer for a single day's schedule"""

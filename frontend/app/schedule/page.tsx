@@ -582,33 +582,116 @@ function WeekView({ data, onDayClick, onSuggestShift, isAdmin }: { data: any; on
     </div>
   );
 }
-
 function DayView({ data, onSuggestShift, isAdmin }: { data: any; onSuggestShift: (date: string, startTime?: string, endTime?: string) => void; isAdmin?: boolean }) {
-  const hours = Array.from({ length: 24 }, (_, i) => i);
   const shifts = data.shifts || [];
   const coverage = data.coverage || {};
 
+  // Group shifts by time period for better mobile display
+  const morningShifts = shifts.filter((s: any) => {
+    const hour = parseInt(s.start_time.split(':')[0]);
+    return hour >= 0 && hour < 12;
+  });
+
+  const afternoonShifts = shifts.filter((s: any) => {
+    const hour = parseInt(s.start_time.split(':')[0]);
+    return hour >= 12 && hour < 18;
+  });
+
+  const eveningShifts = shifts.filter((s: any) => {
+    const hour = parseInt(s.start_time.split(':')[0]);
+    return hour >= 18 && hour < 24;
+  });
+
+  const renderShiftCard = (shift: any) => {
+    const paName = shift.requested_by_name || 'Unknown';
+    const paId = shift.requested_by || shift.id;
+    const color = getPAColor(paId);
+
+    return (
+      <div
+        key={shift.id}
+        className="rounded-lg p-4 shadow-sm border-l-4 bg-white hover:shadow-md transition-shadow"
+        style={{ borderLeftColor: color }}
+      >
+        <div className="flex items-start justify-between">
+          <div className="flex-1">
+            <div className="flex items-center space-x-3 mb-2">
+              <div
+                className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold shadow-sm"
+                style={{ backgroundColor: color }}
+              >
+                {paName.split(' ').map((n: string) => n[0]).join('').toUpperCase()}
+              </div>
+              <div>
+                <div className="font-semibold text-gray-900">{paName}</div>
+                <div className="text-sm text-gray-600">
+                  {shift.start_time.slice(0, 5)} - {shift.end_time.slice(0, 5)}
+                  <span className="ml-2 text-gray-500">({shift.duration_hours}h)</span>
+                </div>
+              </div>
+            </div>
+            {shift.notes && (
+              <div className="text-sm text-gray-600 mt-2 pl-13 italic bg-gray-50 p-2 rounded">
+                {shift.notes}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderTimeSection = (title: string, shifts: any[], icon: string) => {
+    if (shifts.length === 0) return null;
+
+    return (
+      <div className="mb-6">
+        <div className="flex items-center space-x-2 mb-3 px-2">
+          <span className="text-2xl">{icon}</span>
+          <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
+          <span className="text-sm text-gray-500">({shifts.length})</span>
+        </div>
+        <div className="space-y-3">
+          {shifts.map(renderShiftCard)}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-      <div className="border-b border-gray-200 px-4 py-4 bg-gray-50">
+      {/* Header */}
+      <div className="border-b border-gray-200 px-4 sm:px-6 py-4 bg-gradient-to-r from-blue-50 to-indigo-50">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">{data.day_name}</h3>
+            <h3 className="text-xl font-bold text-gray-900">{data.day_name}</h3>
             <div className="flex items-center space-x-4 mt-2 text-sm">
-              <span className={`inline-flex items-center space-x-1 ${coverage.morning_covered ? 'text-green-600' : 'text-red-600'}`}>
-                <div className={`w-2 h-2 rounded-full ${coverage.morning_covered ? 'bg-green-600' : 'bg-red-600'}`}></div>
-                <span>Morning (6-9 AM)</span>
+              <span className={`inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full ${
+                coverage.morning_covered 
+                  ? 'bg-green-100 text-green-700' 
+                  : 'bg-red-100 text-red-700'
+              }`}>
+                <div className={`w-2 h-2 rounded-full ${
+                  coverage.morning_covered ? 'bg-green-500' : 'bg-red-500'
+                }`}></div>
+                <span className="font-medium">Morning (6-9 AM)</span>
               </span>
-              <span className={`inline-flex items-center space-x-1 ${coverage.evening_covered ? 'text-green-600' : 'text-red-600'}`}>
-                <div className={`w-2 h-2 rounded-full ${coverage.evening_covered ? 'bg-green-600' : 'bg-red-600'}`}></div>
-                <span>Evening (9-10 PM)</span>
+              <span className={`inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full ${
+                coverage.evening_covered 
+                  ? 'bg-green-100 text-green-700' 
+                  : 'bg-red-100 text-red-700'
+              }`}>
+                <div className={`w-2 h-2 rounded-full ${
+                  coverage.evening_covered ? 'bg-green-500' : 'bg-red-500'
+                }`}></div>
+                <span className="font-medium">Evening (9-10 PM)</span>
               </span>
             </div>
           </div>
           {isAdmin && (
             <button
               onClick={() => onSuggestShift(data.date)}
-              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
             >
               + Suggest Shift
             </button>
@@ -616,69 +699,23 @@ function DayView({ data, onSuggestShift, isAdmin }: { data: any; onSuggestShift:
         </div>
       </div>
 
-      <div className="divide-y divide-gray-100">
-        {hours.map((hour) => {
-          const isCriticalTime = (hour >= 6 && hour < 9) || (hour >= 21 && hour < 22);
-          const shiftsInHour = shifts.filter((shift: any) => {
-            const startHour = parseInt(shift.start_time.split(':')[0]);
-            const endHour = parseInt(shift.end_time.split(':')[0]);
-            
-            if (startHour < endHour) {
-              return hour >= startHour && hour < endHour;
-            } else {
-              return hour >= startHour || hour < endHour;
-            }
-          });
-
-          return (
-            <div
-              key={hour}
-              className={`flex ${isCriticalTime ? 'bg-yellow-50/30' : ''}`}
-            >
-              <div className="w-20 sm:w-24 p-3 text-sm font-medium text-gray-500">
-                {hour.toString().padStart(2, '0')}:00
-              </div>
-
-              <div className="flex-1 p-3 space-y-2">
-                {shiftsInHour.length === 0 ? (
-                  <div className="text-sm text-gray-400 italic">No shifts</div>
-                ) : (
-                  shiftsInHour.map((shift: any) => {
-                    const paName = shift.requested_by_name || shift.requested_by || 'Unknown';
-                    const paId = shift.requested_by || shift.id;
-                    const color = getPAColor(paId);
-
-                    return (
-                      <div
-                        key={shift.id}
-                        className="rounded-lg p-3 shadow-sm border"
-                        style={{ borderLeftWidth: '4px', borderLeftColor: color }}
-                      >
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <div className="font-semibold text-gray-900">{paName}</div>
-                            <div className="text-sm text-gray-600 mt-1">
-                              {shift.start_time.slice(0, 5)} - {shift.end_time.slice(0, 5)} ({shift.duration_hours}h)
-                            </div>
-                            {shift.notes && (
-                              <div className="text-sm text-gray-500 mt-2 italic">{shift.notes}</div>
-                            )}
-                          </div>
-                          <div
-                            className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold"
-                            style={{ backgroundColor: color }}
-                          >
-                            {paName.split(' ').map((n: string) => n[0]).join('').toUpperCase()}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-          );
-        })}
+      {/* Shifts by Time Period */}
+      <div className="p-4 sm:p-6">
+        {shifts.length === 0 ? (
+          <div className="text-center py-12">
+            <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <h3 className="mt-2 text-sm font-medium text-gray-900">No shifts scheduled</h3>
+            <p className="mt-1 text-sm text-gray-500">No one is scheduled to work on this day.</p>
+          </div>
+        ) : (
+          <>
+            {renderTimeSection('Morning', morningShifts, '🌅')}
+            {renderTimeSection('Afternoon', afternoonShifts, '☀️')}
+            {renderTimeSection('Evening', eveningShifts, '🌙')}
+          </>
+        )}
       </div>
     </div>
   );

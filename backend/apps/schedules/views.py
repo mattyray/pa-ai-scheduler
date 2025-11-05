@@ -303,8 +303,7 @@ class WeekViewAPI(APIView):
                 )
             
             # Use ISO 8601 week calculation (matches frontend)
-            # Find a date in that ISO week
-            jan_4 = datetime(year, 1, 4).date()  # Jan 4 is always in week 1
+            jan_4 = datetime(year, 1, 4).date()
             week_1_monday = jan_4 - timedelta(days=jan_4.weekday())
             week_start = week_1_monday + timedelta(weeks=week - 1)
             week_end = week_start + timedelta(days=6)
@@ -335,14 +334,10 @@ class WeekViewAPI(APIView):
                 # Calculate total hours
                 total_hours = sum(s.duration_hours for s in day_shifts)
                 
-                # Group shifts by hour for timeline view
-                hourly_shifts = self._group_shifts_by_hour(day_shifts)
-                
                 days.append({
-                    'date': day_date.isoformat(),  # Ensure string format
+                    'date': day_date.isoformat(),
                     'day_name': day_date.strftime('%A'),
                     'shifts': CalendarShiftSerializer(day_shifts, many=True).data,
-                    'hourly_shifts': hourly_shifts,
                     'coverage': coverage,
                     'total_hours': float(total_hours)
                 })
