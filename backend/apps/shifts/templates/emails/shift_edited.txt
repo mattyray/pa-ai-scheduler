@@ -1,0 +1,31 @@
+✏️ SHIFT UPDATED
+
+Hi {{ pa_name }},
+
+An admin has updated one of your shifts. Please review the changes below.
+
+ORIGINAL SHIFT
+--------------
+Date: {{ old_date }}
+Time: {{ old_start_time }} - {{ old_end_time }}
+
+NEW SHIFT DETAILS
+-----------------
+Date: {{ new_date }}
+Time: {{ new_start_time }} - {{ new_end_time }}
+
+{% if admin_notes %}ADMIN NOTES
+-----------
+{{ admin_notes }}
+{% endif %}
+
+Please check your updated schedule here:
+{{ schedule_url }}
+
+If you have any questions about this change, please contact your administrator.
+
+Thank you,
+PA Scheduling System
+
+---
+This is an automated message. Please do not reply to this email.
