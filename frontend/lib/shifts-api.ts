@@ -29,6 +29,13 @@ export interface CreateShiftRequestData {
   notes?: string;
 }
 
+export interface EditShiftData {
+  date: string;
+  start_time: string;
+  end_time: string;
+  admin_notes?: string;
+}
+
 export const shiftsAPI = {
   listRequests: () => 
     api.get<{ results: ShiftRequest[] }>('/api/shifts/requests/'),
@@ -48,6 +55,9 @@ export const shiftsAPI = {
   rejectRequest: (id: number, rejected_reason: string) => 
     api.post<ShiftRequest>(`/api/shifts/requests/${id}/reject/`, { rejected_reason }),
   
-  cancelRequest: (id: number) => 
-    api.post<ShiftRequest>(`/api/shifts/requests/${id}/cancel/`),
+  editShift: (id: number, data: EditShiftData) => 
+    api.patch<ShiftRequest>(`/api/shifts/requests/${id}/edit/`, data),
+  
+  cancelRequest: (id: number, cancellation_reason?: string) => 
+    api.post<ShiftRequest>(`/api/shifts/requests/${id}/cancel/`, { cancellation_reason }),
 };
