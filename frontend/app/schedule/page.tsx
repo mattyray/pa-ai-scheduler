@@ -753,6 +753,19 @@ function DayView({ data, onSuggestShift, onShiftClick, isAdmin, currentUserId }:
     return false;
   };
 
+  const getShiftsCoveringHour = (hour: number) => {
+    return shifts.filter((shift: any) => {
+      const startHour = parseInt(shift.start_time.split(':')[0]);
+      const endHour = parseInt(shift.end_time.split(':')[0]);
+      const endMinute = parseInt(shift.end_time.split(':')[1]);
+      
+      // Shift covers this hour if:
+      // - It starts at or before this hour AND
+      // - It ends after this hour (or exactly at the end if minutes > 0)
+      return startHour <= hour && (endHour > hour || (endHour === hour && endMinute > 0));
+    });
+  };
+
   const handleCellClick = (hour: number) => {
     if (!isAdmin) return;
     
@@ -779,8 +792,9 @@ function DayView({ data, onSuggestShift, onShiftClick, isAdmin, currentUserId }:
             const startHour = parseInt(shift.start_time.split(':')[0]);
             return hour === startHour;
           });
-
-          const hasShift = shiftsStartingThisHour.length > 0;
+          
+          const shiftsCoveringThisHour = getShiftsCoveringHour(hour);
+          const hasShiftCoverage = shiftsCoveringThisHour.length > 0;
 
           return (
             <div
@@ -794,9 +808,9 @@ function DayView({ data, onSuggestShift, onShiftClick, isAdmin, currentUserId }:
               </div>
 
               <div 
-                className={`relative p-2 min-h-[3rem] flex-1 ${isAdmin && !hasShift ? 'cursor-pointer hover:bg-blue-50 transition-colors' : ''}`}
-                onClick={() => !hasShift && handleCellClick(hour)}
-                title={isAdmin && !hasShift ? 'Click to suggest shift' : ''}
+                className={`relative p-2 min-h-[3rem] flex-1 ${isAdmin && !hasShiftCoverage ? 'cursor-pointer hover:bg-blue-50 transition-colors' : ''}`}
+                onClick={() => !hasShiftCoverage && handleCellClick(hour)}
+                title={isAdmin && !hasShiftCoverage ? 'Click to suggest shift' : ''}
               >
                 {shiftsStartingThisHour.map((shift: any) => {
                   const paName = shift.requested_by_name || shift.requested_by || 'Unknown';
