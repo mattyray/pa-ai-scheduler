@@ -7,6 +7,21 @@ import { getPAColor } from '@/lib/pa-colors';
 import SuggestShiftModal from '@/app/admin/dashboard/SuggestShiftModal';
 import { api } from '@/lib/api';
 
+// Helper function to convert 24h time to 12h format
+function formatTime12Hour(time24: string): string {
+  const [hours, minutes] = time24.split(':').map(Number);
+  const period = hours >= 12 ? 'PM' : 'AM';
+  const hours12 = hours % 12 || 12;
+  return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
+}
+
+// Helper function to format hour for display
+function formatHour12(hour: number): string {
+  const period = hour >= 12 ? 'PM' : 'AM';
+  const hours12 = hour % 12 || 12;
+  return `${hours12}:00 ${period}`;
+}
+
 export default function SchedulePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -34,7 +49,6 @@ export default function SchedulePage() {
     }
   }, [user, authLoading, router]);
 
-  // Initialize from URL params - runs once
   useEffect(() => {
     if (!authLoading && user && !initialized) {
       const view = searchParams.get('view') as 'month' | 'week' | 'day' | null;
@@ -60,7 +74,6 @@ export default function SchedulePage() {
     }
   }, [authLoading, user, searchParams, initialized]);
 
-  // Load calendar data whenever view/date changes AND after initialization
   useEffect(() => {
     if (!authLoading && user && initialized) {
       loadCalendarData();
@@ -111,9 +124,7 @@ export default function SchedulePage() {
         response = await api.get(`/api/schedule-periods/calendar/month/${year}/${month}/`);
       } else if (viewType === 'week') {
         const { year, week } = getISOWeek(currentDate);
-        console.log('Loading week:', { year, week, date: currentDate.toISOString() });
         response = await api.get(`/api/schedule-periods/calendar/week/${year}/${week}/`);
-        console.log('Week data response:', response.data);
       } else {
         const dateStr = currentDate.toISOString().split('T')[0];
         response = await api.get(`/api/schedule-periods/calendar/day/${dateStr}/`);
@@ -433,10 +444,10 @@ function MonthView({ data, onDayClick }: { data: any; onDayClick: (date: string)
                         key={idx}
                         className="text-xs px-1.5 py-1 rounded truncate"
                         style={{ backgroundColor: color, color: '#fff' }}
-                        title={`${paName}: ${shift.start_time} - ${shift.end_time}`}
+                        title={`${paName}: ${formatTime12Hour(shift.start_time)} - ${formatTime12Hour(shift.end_time)}`}
                       >
                         <span className="font-medium">{initials}</span>
-                        <span className="hidden sm:inline ml-1 opacity-90">{shift.start_time.slice(0, 5)}</span>
+                        <span className="hidden sm:inline ml-1 opacity-90">{formatTime12Hour(shift.start_time).replace(' ', '')}</span>
                       </div>
                     );
                   })}
@@ -525,47 +536,40 @@ function WeekView({ data, onDayClick, onSuggestShift, isAdmin }: { data: any; on
                   }`}
                 >
                   <div className="p-2 text-xs text-gray-500 font-medium">
-                    {hour.toString().padStart(2, '0')}:00
+                    {formatHour12(hour)}
                   </div>
 
                   {days.map((day: any) => {
-                    const shiftsInHour = (day.shifts || []).filter((shift: any) => {
+                    const shiftsStartingThisHour = (day.shifts || []).filter((shift: any) => {
                       const startHour = parseInt(shift.start_time.split(':')[0]);
-                      const endHour = parseInt(shift.end_time.split(':')[0]);
-                      
-                      if (startHour < endHour) {
-                        return hour >= startHour && hour < endHour;
-                      } else {
-                        return hour >= startHour || hour < endHour;
-                      }
+                      return hour === startHour;
                     });
 
                     return (
                       <div key={`${day.date}-${hour}`} className="relative p-1 min-h-[3rem]">
-                        {shiftsInHour.map((shift: any) => {
+                        {shiftsStartingThisHour.map((shift: any) => {
                           const paName = shift.requested_by_name || shift.requested_by || 'Unknown';
                           const paId = shift.requested_by || shift.id;
                           const color = getPAColor(paId);
-                          const startHour = parseInt(shift.start_time.split(':')[0]);
 
-                          if (hour === startHour) {
-                            return (
-                              <div
-                                key={shift.id}
-                                className="absolute inset-x-1 rounded px-2 py-1 text-xs font-medium text-white shadow-sm z-10"
-                                style={{
-                                  backgroundColor: color,
-                                  top: '0.25rem',
-                                  height: `${shift.duration_hours * 3}rem`,
-                                }}
-                                title={`${paName}: ${shift.start_time} - ${shift.end_time}`}
-                              >
-                                <div className="truncate">{paName.split(' ')[0]}</div>
-                                <div className="text-xs opacity-90">{shift.start_time.slice(0, 5)}</div>
+                          return (
+                            <div
+                              key={shift.id}
+                              className="absolute inset-x-1 rounded px-2 py-1 text-xs font-medium text-white shadow-sm z-10 flex flex-col justify-between"
+                              style={{
+                                backgroundColor: color,
+                                top: '0.25rem',
+                                height: `${shift.duration_hours * 3}rem`,
+                              }}
+                              title={`${paName}: ${formatTime12Hour(shift.start_time)} - ${formatTime12Hour(shift.end_time)}`}
+                            >
+                              <div>
+                                <div className="truncate font-semibold">{paName.split(' ')[0]}</div>
+                                <div className="text-xs opacity-90">{formatTime12Hour(shift.start_time)}</div>
                               </div>
-                            );
-                          }
-                          return null;
+                              <div className="text-xs opacity-90 text-right">{formatTime12Hour(shift.end_time)}</div>
+                            </div>
+                          );
                         })}
                       </div>
                     );
@@ -620,69 +624,59 @@ function DayView({ data, onSuggestShift, isAdmin }: { data: any; onSuggestShift:
         </div>
       </div>
 
-      <div className="divide-y divide-gray-100">
-        {hours.map((hour) => {
-          const isCriticalTime = (hour >= 6 && hour < 9) || (hour >= 21 && hour < 22);
-          const shiftsInHour = shifts.filter((shift: any) => {
-            const startHour = parseInt(shift.start_time.split(':')[0]);
-            const endHour = parseInt(shift.end_time.split(':')[0]);
-            
-            if (startHour < endHour) {
-              return hour >= startHour && hour < endHour;
-            } else {
-              return hour >= startHour || hour < endHour;
-            }
-          });
+      <div className="overflow-x-auto">
+        <div className="min-w-[600px]">
+          <div className="relative">
+            {hours.map((hour) => {
+              const isCriticalTime = (hour >= 6 && hour < 9) || (hour >= 21 && hour < 22);
+              
+              // Find shifts that START at this hour
+              const shiftsStartingThisHour = shifts.filter((shift: any) => {
+                const startHour = parseInt(shift.start_time.split(':')[0]);
+                return hour === startHour;
+              });
 
-          return (
-            <div
-              key={hour}
-              className={`flex ${isCriticalTime ? 'bg-yellow-50/30' : ''}`}
-            >
-              <div className="w-20 sm:w-24 p-3 text-sm font-medium text-gray-500">
-                {hour.toString().padStart(2, '0')}:00
-              </div>
+              return (
+                <div
+                  key={hour}
+                  className={`grid grid-cols-[100px_1fr] border-b border-gray-100 ${
+                    isCriticalTime ? 'bg-yellow-50/30' : ''
+                  }`}
+                >
+                  <div className="p-3 text-sm font-medium text-gray-500 border-r border-gray-100">
+                    {formatHour12(hour)}
+                  </div>
 
-              <div className="flex-1 p-3 space-y-2">
-                {shiftsInHour.length === 0 ? (
-                  <div className="text-sm text-gray-400 italic">No shifts</div>
-                ) : (
-                  shiftsInHour.map((shift: any) => {
-                    const paName = shift.requested_by_name || shift.requested_by || 'Unknown';
-                    const paId = shift.requested_by || shift.id;
-                    const color = getPAColor(paId);
+                  <div className="relative p-2 min-h-[3rem]">
+                    {shiftsStartingThisHour.map((shift: any) => {
+                      const paName = shift.requested_by_name || shift.requested_by || 'Unknown';
+                      const paId = shift.requested_by || shift.id;
+                      const color = getPAColor(paId);
 
-                    return (
-                      <div
-                        key={shift.id}
-                        className="rounded-lg p-3 shadow-sm border"
-                        style={{ borderLeftWidth: '4px', borderLeftColor: color }}
-                      >
-                        <div className="flex items-start justify-between">
+                      return (
+                        <div
+                          key={shift.id}
+                          className="absolute inset-x-2 rounded-lg px-4 py-2 text-white shadow-md flex flex-col justify-between"
+                          style={{
+                            backgroundColor: color,
+                            top: '0.5rem',
+                            height: `${shift.duration_hours * 3}rem`,
+                          }}
+                        >
                           <div>
-                            <div className="font-semibold text-gray-900">{paName}</div>
-                            <div className="text-sm text-gray-600 mt-1">
-                              {shift.start_time.slice(0, 5)} - {shift.end_time.slice(0, 5)} ({shift.duration_hours}h)
-                            </div>
-                            {shift.notes && (
-                              <div className="text-sm text-gray-500 mt-2 italic">{shift.notes}</div>
-                            )}
+                            <div className="font-bold text-base">{paName}</div>
+                            <div className="text-sm opacity-90 mt-1">{formatTime12Hour(shift.start_time)}</div>
                           </div>
-                          <div
-                            className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold"
-                            style={{ backgroundColor: color }}
-                          >
-                            {paName.split(' ').map((n: string) => n[0]).join('').toUpperCase()}
-                          </div>
+                          <div className="text-sm opacity-90 text-right font-medium">{formatTime12Hour(shift.end_time)}</div>
                         </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-          );
-        })}
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
     </div>
   );
