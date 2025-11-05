@@ -609,6 +609,16 @@ function WeekView({ data, onDayClick, onSuggestShift, onShiftClick, isAdmin, cur
     return false;
   };
 
+  const handleCellClick = (date: string, hour: number) => {
+    if (!isAdmin) return;
+    
+    const startTime = `${hour.toString().padStart(2, '0')}:00`;
+    const endHour = hour + 3;
+    const endTime = `${endHour.toString().padStart(2, '0')}:00`;
+    
+    onSuggestShift(date, startTime, endTime);
+  };
+
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
       <div className="grid grid-cols-8 border-b border-gray-200 bg-gray-50">
@@ -656,8 +666,15 @@ function WeekView({ data, onDayClick, onSuggestShift, onShiftClick, isAdmin, cur
                   return hour === startHour;
                 });
 
+                const hasShift = shiftsStartingThisHour.length > 0;
+
                 return (
-                  <div key={`${day.date}-${hour}`} className="relative p-1 min-h-[3rem]">
+                  <div 
+                    key={`${day.date}-${hour}`} 
+                    className={`relative p-1 min-h-[3rem] ${isAdmin && !hasShift ? 'cursor-pointer hover:bg-blue-50 transition-colors' : ''}`}
+                    onClick={() => !hasShift && handleCellClick(day.date, hour)}
+                    title={isAdmin && !hasShift ? 'Click to suggest shift' : ''}
+                  >
                     {shiftsStartingThisHour.map((shift: any) => {
                       const paName = shift.requested_by_name || shift.requested_by || 'Unknown';
                       const paId = shift.requested_by || shift.id;
@@ -713,6 +730,14 @@ function WeekView({ data, onDayClick, onSuggestShift, onShiftClick, isAdmin, cur
           );
         })}
       </div>
+
+      {isAdmin && (
+        <div className="border-t border-gray-200 bg-blue-50 px-4 py-3">
+          <p className="text-sm text-blue-800">
+            💡 <strong>Tip:</strong> Click on any empty time slot to suggest a shift for that time
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -726,6 +751,16 @@ function DayView({ data, onSuggestShift, onShiftClick, isAdmin, currentUserId }:
     if (shift.status === 'APPROVED' && isAdmin) return true;
     if (shift.status === 'APPROVED' && shift.requested_by === currentUserId) return true;
     return false;
+  };
+
+  const handleCellClick = (hour: number) => {
+    if (!isAdmin) return;
+    
+    const startTime = `${hour.toString().padStart(2, '0')}:00`;
+    const endHour = hour + 3;
+    const endTime = `${endHour.toString().padStart(2, '0')}:00`;
+    
+    onSuggestShift(data.date, startTime, endTime);
   };
 
   return (
@@ -745,6 +780,8 @@ function DayView({ data, onSuggestShift, onShiftClick, isAdmin, currentUserId }:
             return hour === startHour;
           });
 
+          const hasShift = shiftsStartingThisHour.length > 0;
+
           return (
             <div
               key={hour}
@@ -756,7 +793,11 @@ function DayView({ data, onSuggestShift, onShiftClick, isAdmin, currentUserId }:
                 {formatHour12(hour)}
               </div>
 
-              <div className="relative p-2 min-h-[3rem] flex-1">
+              <div 
+                className={`relative p-2 min-h-[3rem] flex-1 ${isAdmin && !hasShift ? 'cursor-pointer hover:bg-blue-50 transition-colors' : ''}`}
+                onClick={() => !hasShift && handleCellClick(hour)}
+                title={isAdmin && !hasShift ? 'Click to suggest shift' : ''}
+              >
                 {shiftsStartingThisHour.map((shift: any) => {
                   const paName = shift.requested_by_name || shift.requested_by || 'Unknown';
                   const paId = shift.requested_by || shift.id;
@@ -810,6 +851,14 @@ function DayView({ data, onSuggestShift, onShiftClick, isAdmin, currentUserId }:
           );
         })}
       </div>
+
+      {isAdmin && (
+        <div className="border-t border-gray-200 bg-blue-50 px-4 py-3">
+          <p className="text-sm text-blue-800">
+            💡 <strong>Tip:</strong> Click on any empty time slot to suggest a shift for that time
+          </p>
+        </div>
+      )}
     </div>
   );
 }
