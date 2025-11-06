@@ -14,6 +14,7 @@ export interface ShiftRequest {
   notes: string;
   admin_notes: string;
   rejected_reason: string;
+  cancellation_reason?: string;
   created_at: string;
   updated_at: string;
   approved_at: string | null;
