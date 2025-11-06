@@ -5,19 +5,19 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { shiftsAPI, ShiftRequest } from '@/lib/shifts-api';
 
-export default function MyRequestsPage() {
+export default function RequestsPage() {
   const router = useRouter();
-  const { user, isPA, loading: authLoading, logout } = useAuth();
+  const { user, isPA, isAdmin, loading: authLoading, logout } = useAuth();
 
   const [requests, setRequests] = useState<ShiftRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
 
   useEffect(() => {
-    if (!authLoading && !isPA) {
+    if (!authLoading && !user) {
       router.push('/login');
     }
-  }, [authLoading, isPA, router]);
+  }, [authLoading, user, router]);
 
   useEffect(() => {
     if (user) {
@@ -30,7 +30,14 @@ export default function MyRequestsPage() {
       setLoading(true);
       const response = await shiftsAPI.listShifts();
       const shiftsData = response.data.results || response.data;
-      setRequests(Array.isArray(shiftsData) ? shiftsData : []);
+      
+      let requestsList = Array.isArray(shiftsData) ? shiftsData : [];
+      
+      if (isPA) {
+        requestsList = requestsList.filter(r => r.requested_by === user?.id);
+      }
+      
+      setRequests(requestsList);
     } catch (err) {
       console.error('Failed to load requests:', err);
     } finally {
@@ -38,11 +45,34 @@ export default function MyRequestsPage() {
     }
   };
 
+  const handleApprove = async (id: number) => {
+    try {
+      await shiftsAPI.approveRequest(id);
+      loadRequests();
+    } catch (err: any) {
+      console.error('Failed to approve request:', err);
+      alert(err.response?.data?.error || 'Failed to approve request');
+    }
+  };
+
+  const handleReject = async (id: number) => {
+    const reason = prompt('Enter rejection reason:');
+    if (!reason) return;
+
+    try {
+      await shiftsAPI.rejectRequest(id, reason);
+      loadRequests();
+    } catch (err) {
+      console.error('Failed to reject request:', err);
+      alert('Failed to reject request');
+    }
+  };
+
   const handleCancel = async (id: number) => {
     if (!confirm('Are you sure you want to cancel this request?')) return;
 
     try {
-      await shiftsAPI.deleteShiftRequest(id);
+      await shiftsAPI.cancelRequest(id);
       loadRequests();
     } catch (err) {
       console.error('Failed to cancel request:', err);
@@ -88,26 +118,29 @@ export default function MyRequestsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Navigation Header */}
       <nav className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center space-x-4">
               <button
-                onClick={() => router.push('/dashboard')}
+                onClick={() => router.push(isAdmin ? '/admin/dashboard' : '/dashboard')}
                 className="text-gray-600 hover:text-gray-900"
               >
                 ← Back to Dashboard
               </button>
-              <h1 className="text-xl font-bold text-gray-900">My Shift Requests</h1>
+              <h1 className="text-xl font-bold text-gray-900">
+                {isAdmin ? 'All Shift Requests' : 'My Shift Requests'}
+              </h1>
             </div>
             <div className="flex items-center space-x-4">
-              <button
-                onClick={() => router.push('/requests/new')}
-                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
-              >
-                New Request
-              </button>
+              {isPA && (
+                <button
+                  onClick={() => router.push('/requests/new')}
+                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+                >
+                  New Request
+                </button>
+              )}
               <button
                 onClick={logout}
                 className="text-sm text-gray-600 hover:text-gray-900"
@@ -119,10 +152,8 @@ export default function MyRequestsPage() {
         </div>
       </nav>
 
-      {/* Main Content */}
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 sm:px-0">
-          {/* Filter Tabs */}
           <div className="mb-6">
             <div className="border-b border-gray-200">
               <nav className="-mb-px flex space-x-8">
@@ -170,7 +201,6 @@ export default function MyRequestsPage() {
             </div>
           </div>
 
-          {/* Requests List */}
           <div className="bg-white shadow overflow-hidden sm:rounded-md">
             {filteredRequests.length === 0 ? (
               <div className="text-center py-12">
@@ -179,9 +209,9 @@ export default function MyRequestsPage() {
                 </svg>
                 <h3 className="mt-2 text-sm font-medium text-gray-900">No requests</h3>
                 <p className="mt-1 text-sm text-gray-500">
-                  {filter === 'all' ? 'Get started by creating a new shift request.' : `No ${filter} requests.`}
+                  {filter === 'all' ? (isPA ? 'Get started by creating a new shift request.' : 'No requests to display.') : `No ${filter} requests.`}
                 </p>
-                {filter === 'all' && (
+                {filter === 'all' && isPA && (
                   <div className="mt-6">
                     <button
                       onClick={() => router.push('/requests/new')}
@@ -203,14 +233,21 @@ export default function MyRequestsPage() {
                       <div className="flex items-center justify-between">
                         <div className="flex-1">
                           <div className="flex items-center justify-between">
-                            <p className="text-lg font-medium text-gray-900">
-                              {new Date(request.date).toLocaleDateString('en-US', { 
-                                weekday: 'long', 
-                                month: 'long', 
-                                day: 'numeric', 
-                                year: 'numeric' 
-                              })}
-                            </p>
+                            <div>
+                              <p className="text-lg font-medium text-gray-900">
+                                {new Date(request.date).toLocaleDateString('en-US', { 
+                                  weekday: 'long', 
+                                  month: 'long', 
+                                  day: 'numeric', 
+                                  year: 'numeric' 
+                                })}
+                              </p>
+                              {isAdmin && (
+                                <p className="text-sm text-gray-600 mt-1">
+                                  PA: {request.requested_by_name}
+                                </p>
+                              )}
+                            </div>
                             <span className={`ml-2 px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(request.status)}`}>
                               {request.status}
                             </span>
@@ -244,16 +281,32 @@ export default function MyRequestsPage() {
                             </div>
                           )}
                         </div>
-                        {request.status === 'PENDING' && (
-                          <div className="ml-4">
+                        <div className="ml-4 flex space-x-2">
+                          {request.status === 'PENDING' && isAdmin && (
+                            <>
+                              <button
+                                onClick={() => handleApprove(request.id)}
+                                className="inline-flex items-center px-3 py-2 border border-green-300 shadow-sm text-sm leading-4 font-medium rounded-md text-green-700 bg-white hover:bg-green-50"
+                              >
+                                Approve
+                              </button>
+                              <button
+                                onClick={() => handleReject(request.id)}
+                                className="inline-flex items-center px-3 py-2 border border-red-300 shadow-sm text-sm leading-4 font-medium rounded-md text-red-700 bg-white hover:bg-red-50"
+                              >
+                                Reject
+                              </button>
+                            </>
+                          )}
+                          {request.status === 'PENDING' && isPA && (
                             <button
                               onClick={() => handleCancel(request.id)}
                               className="inline-flex items-center px-3 py-2 border border-red-300 shadow-sm text-sm leading-4 font-medium rounded-md text-red-700 bg-white hover:bg-red-50"
                             >
                               Cancel
                             </button>
-                          </div>
-                        )}
+                          )}
+                        </div>
                       </div>
                     </div>
                   </li>
