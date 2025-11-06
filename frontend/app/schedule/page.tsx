@@ -200,6 +200,8 @@ export default function SchedulePage() {
   };
 
   const handleShiftClick = (shift: any) => {
+    console.log('🔵 Shift clicked:', shift);
+    
     if (shift.status === 'PENDING' && user?.role === 'ADMIN') {
       setSelectedShift(shift);
       setApproveModalOpen(true);
@@ -765,10 +767,8 @@ function DayView({ data, onSuggestShift, onShiftClick, isAdmin, currentUserId }:
   const handleCellClick = (hour: number) => {
     if (!isAdmin) return;
     
-    // Check if any shift covers this hour
     const coveringShifts = getShiftsCoveringHour(hour);
     if (coveringShifts.length > 0) {
-      // Click the first covering shift
       const shift = coveringShifts[0];
       if (isShiftClickable(shift)) {
         onShiftClick(shift);
@@ -776,7 +776,6 @@ function DayView({ data, onSuggestShift, onShiftClick, isAdmin, currentUserId }:
       return;
     }
     
-    // Otherwise suggest a new shift
     const startTime = `${hour.toString().padStart(2, '0')}:00`;
     const endHour = hour + 3;
     const endTime = `${endHour.toString().padStart(2, '0')}:00`;
@@ -897,6 +896,7 @@ function DayView({ data, onSuggestShift, onShiftClick, isAdmin, currentUserId }:
     </div>
   );
 }
+
 function ApproveRejectModal({ isOpen, shift, onClose, onSuccess }: { isOpen: boolean; shift: any; onClose: () => void; onSuccess: () => void }) {
   const [mode, setMode] = useState<'choose' | 'approve' | 'reject'>('choose');
   const [adminNotes, setAdminNotes] = useState('');
@@ -913,15 +913,43 @@ function ApproveRejectModal({ isOpen, shift, onClose, onSuccess }: { isOpen: boo
 
   const handleApprove = async () => {
     if (!shift) return;
+    
+    console.log('🚀 Attempting to approve shift:', {
+      shiftId: shift.id,
+      adminNotes,
+      userRole: localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user') || '{}').role : 'unknown',
+      hasToken: !!localStorage.getItem('access_token')
+    });
+    
     setLoading(true);
+    
     try {
-      await shiftsAPI.approveRequest(shift.id, adminNotes);
+      const response = await shiftsAPI.approveRequest(shift.id, adminNotes);
+      console.log('✅ Approve successful:', response.data);
       onSuccess();
     } catch (err: any) {
+      console.error('❌ Approve failed:', {
+        status: err.response?.status,
+        statusText: err.response?.statusText,
+        data: err.response?.data,
+        message: err.message,
+        config: {
+          url: err.config?.url,
+          method: err.config?.method,
+          headers: err.config?.headers
+        }
+      });
+      
       if (err.response?.data?.error) {
-        alert(err.response.data.error);
+        alert(`Error: ${err.response.data.error}`);
+      } else if (err.response?.data?.detail) {
+        alert(`Error: ${err.response.data.detail}`);
+      } else if (err.response?.status === 403) {
+        alert('Access Denied: You do not have permission to approve shifts. Please check if you are logged in as an admin.');
+      } else if (err.response?.status === 401) {
+        alert('Authentication Error: Your session may have expired. Please try logging in again.');
       } else {
-        alert('Failed to approve shift request');
+        alert(`Failed to approve shift: ${err.message}`);
       }
     } finally {
       setLoading(false);
@@ -933,12 +961,32 @@ function ApproveRejectModal({ isOpen, shift, onClose, onSuccess }: { isOpen: boo
       alert('Please provide a reason for rejection');
       return;
     }
+    
+    console.log('🚀 Attempting to reject shift:', {
+      shiftId: shift.id,
+      rejectedReason
+    });
+    
     setLoading(true);
+    
     try {
-      await shiftsAPI.rejectRequest(shift.id, rejectedReason);
+      const response = await shiftsAPI.rejectRequest(shift.id, rejectedReason);
+      console.log('✅ Reject successful:', response.data);
       onSuccess();
     } catch (err: any) {
-      alert('Failed to reject shift request');
+      console.error('❌ Reject failed:', {
+        status: err.response?.status,
+        data: err.response?.data,
+        message: err.message
+      });
+      
+      if (err.response?.data?.error) {
+        alert(`Error: ${err.response.data.error}`);
+      } else if (err.response?.data?.detail) {
+        alert(`Error: ${err.response.data.detail}`);
+      } else {
+        alert(`Failed to reject shift: ${err.message}`);
+      }
     } finally {
       setLoading(false);
     }

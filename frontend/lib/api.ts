@@ -2,7 +2,6 @@ import axios from 'axios';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8006';
 
-// Create axios instance
 export const api = axios.create({
   baseURL: API_URL,
   headers: {
@@ -10,7 +9,6 @@ export const api = axios.create({
   },
 });
 
-// Request interceptor - add JWT token to requests
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('access_token');
@@ -24,42 +22,49 @@ api.interceptors.request.use(
   }
 );
 
-// Response interceptor - handle 401 errors (refresh token or logout)
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
 
-    // Handle 403 Forbidden - Don't logout, just reject
+    console.log('🔴 API Error Intercepted:', {
+      status: error.response?.status,
+      url: originalRequest?.url,
+      method: originalRequest?.method,
+      errorData: error.response?.data,
+      hasRetried: originalRequest._retry
+    });
+
     if (error.response?.status === 403) {
-      console.error('Access forbidden:', error.response?.data?.error || 'You do not have permission to perform this action');
+      console.error('❌ 403 Forbidden:', error.response?.data?.error || 'You do not have permission');
+      alert(`Access Denied: ${error.response?.data?.error || error.response?.data?.detail || 'You do not have permission to perform this action'}`);
       return Promise.reject(error);
     }
 
-    // If 401 and we haven't tried to refresh yet
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
+      console.log('🔄 Attempting token refresh...');
 
       try {
         const refreshToken = localStorage.getItem('refresh_token');
         
         if (!refreshToken) {
+          console.log('❌ No refresh token found');
           throw new Error('No refresh token');
         }
 
-        // Try to refresh the access token
         const response = await axios.post(`${API_URL}/api/auth/refresh/`, {
           refresh: refreshToken,
         });
 
         const { access } = response.data;
         localStorage.setItem('access_token', access);
-
-        // Retry the original request with new token
         originalRequest.headers.Authorization = `Bearer ${access}`;
+
+        console.log('✅ Token refreshed successfully, retrying original request');
         return api(originalRequest);
       } catch (refreshError) {
-        // Refresh failed - logout user
+        console.log('❌ Token refresh failed:', refreshError);
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
         localStorage.removeItem('user');
@@ -72,7 +77,6 @@ api.interceptors.response.use(
   }
 );
 
-// Auth API calls
 export const authAPI = {
   register: (data: {
     email: string;

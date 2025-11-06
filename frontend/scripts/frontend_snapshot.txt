@@ -1,5 +1,5 @@
 # TOTETAXI FRONTEND EXPORT
-# Generated: 2025-11-05 16:20:31.866125
+# Generated: 2025-11-06 10:11:15.274659
 # Files: 29
 
 # ==== app/admin/dashboard/SuggestShiftModal.tsx ====
@@ -4045,6 +4045,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { getPAColor } from '@/lib/pa-colors';
 import SuggestShiftModal from '@/app/admin/dashboard/SuggestShiftModal';
+import EditShiftModal from '@/app/components/EditShiftModal';
+import CancelShiftModal from '@/app/components/CancelShiftModal';
 import { shiftsAPI } from '@/lib/shifts-api';
 import { api } from '@/lib/api';
 
@@ -4083,6 +4085,8 @@ export default function SchedulePage() {
   });
 
   const [approveModalOpen, setApproveModalOpen] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [cancelModalOpen, setCancelModalOpen] = useState(false);
   const [selectedShift, setSelectedShift] = useState<any>(null);
 
   useEffect(() => {
@@ -4239,7 +4243,30 @@ export default function SchedulePage() {
     if (shift.status === 'PENDING' && user?.role === 'ADMIN') {
       setSelectedShift(shift);
       setApproveModalOpen(true);
+    } else if (shift.status === 'APPROVED') {
+      const isAdmin = user?.role === 'ADMIN';
+      const isOwner = shift.requested_by === user?.id;
+      
+      if (isAdmin) {
+        setSelectedShift(shift);
+        setEditModalOpen(true);
+      } else if (isOwner) {
+        setSelectedShift(shift);
+        setCancelModalOpen(true);
+      }
     }
+  };
+
+  const handleEditShift = async () => {
+    setEditModalOpen(false);
+    setSelectedShift(null);
+    await loadCalendarData();
+  };
+
+  const handleCancelShift = async () => {
+    setCancelModalOpen(false);
+    setSelectedShift(null);
+    await loadCalendarData();
   };
 
   const openSuggestModal = (date?: string, startTime?: string, endTime?: string) => {
@@ -4405,11 +4432,11 @@ export default function SchedulePage() {
             <p className="text-gray-500">No data available</p>
           </div>
         ) : viewType === 'month' ? (
-          <MonthView data={calendarData} onDayClick={handleMonthDayClick} onShiftClick={handleShiftClick} isAdmin={user?.role === 'ADMIN'} />
+          <MonthView data={calendarData} onDayClick={handleMonthDayClick} onShiftClick={handleShiftClick} isAdmin={user?.role === 'ADMIN'} currentUserId={user?.id} />
         ) : viewType === 'week' ? (
-          <WeekView data={calendarData} onDayClick={handleWeekDayClick} onSuggestShift={openSuggestModal} onShiftClick={handleShiftClick} isAdmin={user?.role === 'ADMIN'} />
+          <WeekView data={calendarData} onDayClick={handleWeekDayClick} onSuggestShift={openSuggestModal} onShiftClick={handleShiftClick} isAdmin={user?.role === 'ADMIN'} currentUserId={user?.id} />
         ) : (
-          <DayView data={calendarData} onSuggestShift={openSuggestModal} onShiftClick={handleShiftClick} isAdmin={user?.role === 'ADMIN'} />
+          <DayView data={calendarData} onSuggestShift={openSuggestModal} onShiftClick={handleShiftClick} isAdmin={user?.role === 'ADMIN'} currentUserId={user?.id} />
         )}
       </div>
 
@@ -4440,13 +4467,34 @@ export default function SchedulePage() {
               loadCalendarData();
             }}
           />
+
+          <EditShiftModal
+            isOpen={editModalOpen}
+            shift={selectedShift}
+            onClose={() => {
+              setEditModalOpen(false);
+              setSelectedShift(null);
+            }}
+            onSuccess={handleEditShift}
+          />
         </>
       )}
+
+      <CancelShiftModal
+        isOpen={cancelModalOpen}
+        shift={selectedShift}
+        onClose={() => {
+          setCancelModalOpen(false);
+          setSelectedShift(null);
+        }}
+        onSuccess={handleCancelShift}
+        userRole={user?.role as 'ADMIN' | 'PA'}
+      />
     </div>
   );
 }
 
-function MonthView({ data, onDayClick, onShiftClick, isAdmin }: { data: any; onDayClick: (date: string) => void; onShiftClick: (shift: any) => void; isAdmin?: boolean }) {
+function MonthView({ data, onDayClick, onShiftClick, isAdmin, currentUserId }: { data: any; onDayClick: (date: string) => void; onShiftClick: (shift: any) => void; isAdmin?: boolean; currentUserId?: number }) {
   const getCoverageStatus = (coverage: any): string => {
     if (!coverage) return 'none';
     if (coverage.morning_covered && coverage.evening_covered) return 'full';
@@ -4458,6 +4506,13 @@ function MonthView({ data, onDayClick, onShiftClick, isAdmin }: { data: any; onD
     if (status === 'full') return 'border-l-4 border-l-green-500';
     if (status === 'partial') return 'border-l-4 border-l-yellow-500';
     return 'border-l-4 border-l-red-400';
+  };
+
+  const isShiftClickable = (shift: any): boolean => {
+    if (shift.status === 'PENDING' && isAdmin) return true;
+    if (shift.status === 'APPROVED' && isAdmin) return true;
+    if (shift.status === 'APPROVED' && shift.requested_by === currentUserId) return true;
+    return false;
   };
 
   return (
@@ -4509,19 +4564,22 @@ function MonthView({ data, onDayClick, onShiftClick, isAdmin }: { data: any; onD
                     const paId = shift.requested_by || idx;
                     const color = getPAColor(paId);
                     const isPending = shift.status === 'PENDING';
+                    const isClickable = isShiftClickable(shift);
 
                     return (
                       <div
                         key={idx}
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (isPending && isAdmin) {
+                          if (isClickable) {
                             onShiftClick(shift);
                           }
                         }}
                         className={`text-xs px-1.5 py-1 rounded truncate transition-all ${
                           isPending 
                             ? 'border-2 border-dashed cursor-pointer hover:scale-105' 
+                            : isClickable 
+                            ? 'cursor-pointer hover:opacity-80'
                             : ''
                         }`}
                         style={isPending ? {
@@ -4532,7 +4590,7 @@ function MonthView({ data, onDayClick, onShiftClick, isAdmin }: { data: any; onD
                           backgroundColor: color,
                           color: '#fff',
                         }}
-                        title={`${paName}: ${formatTime12Hour(shift.start_time)} - ${formatTime12Hour(shift.end_time)} ${isPending ? '(PENDING - Click to approve/reject)' : ''}`}
+                        title={`${paName}: ${formatTime12Hour(shift.start_time)} - ${formatTime12Hour(shift.end_time)} ${isPending ? '(PENDING - Click to approve/reject)' : isClickable ? '(Click to manage)' : ''}`}
                       >
                         <span className="font-medium">
                           {isPending && '⏳ '}
@@ -4564,268 +4622,326 @@ function MonthView({ data, onDayClick, onShiftClick, isAdmin }: { data: any; onD
           <span className="text-gray-700">Pending</span>
         </div>
         <div className="flex items-center space-x-2">
-          <div className="w-3 h-3 border-l-4 border-l-green-500 bg-white"></div>
-          <span className="text-gray-700">Full coverage</span>
+          <div className="h-3 border-l-4 border-green-500 pl-2"></div>
+          <span className="text-gray-700">Full Coverage</span>
+        </div>
+        <div className="flex items-center space-x-2">
+          <div className="h-3 border-l-4 border-yellow-500 pl-2"></div>
+          <span className="text-gray-700">Partial Coverage</span>
+        </div>
+        <div className="flex items-center space-x-2">
+          <div className="h-3 border-l-4 border-red-400 pl-2"></div>
+          <span className="text-gray-700">No Coverage</span>
         </div>
       </div>
     </div>
   );
 }
 
-function WeekView({ data, onDayClick, onSuggestShift, onShiftClick, isAdmin }: { data: any; onDayClick: (date: string) => void; onSuggestShift: (date: string) => void; onShiftClick: (shift: any) => void; isAdmin?: boolean }) {
+function WeekView({ data, onDayClick, onSuggestShift, onShiftClick, isAdmin, currentUserId }: { data: any; onDayClick: (date: string) => void; onSuggestShift: (date: string, startTime?: string, endTime?: string) => void; onShiftClick: (shift: any) => void; isAdmin?: boolean; currentUserId?: number }) {
   const hours = Array.from({ length: 24 }, (_, i) => i);
   const days = data.days || [];
 
-  return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-      {isAdmin && (
-        <div className="border-b border-gray-200 px-4 py-3 bg-gray-50">
-          <button
-            onClick={() => onSuggestShift(days[0]?.date || new Date().toISOString().split('T')[0])}
-            className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            + Suggest Shift
-          </button>
-        </div>
-      )}
+  const isShiftClickable = (shift: any): boolean => {
+    if (shift.status === 'PENDING' && isAdmin) return true;
+    if (shift.status === 'APPROVED' && isAdmin) return true;
+    if (shift.status === 'APPROVED' && shift.requested_by === currentUserId) return true;
+    return false;
+  };
 
-      <div className="overflow-x-auto">
-        <div className="min-w-[800px]">
-          <div className="grid grid-cols-8 border-b border-gray-200 bg-gray-50">
-            <div className="p-3 text-xs font-semibold text-gray-500">Time</div>
-            {days.map((day: any) => {
-              const date = new Date(day.date);
-              const isToday = date.toDateString() === new Date().toDateString();
-              return (
-                <div
-                  key={day.date}
-                  onClick={() => onDayClick(day.date)}
-                  className={`p-3 text-center cursor-pointer hover:bg-gray-100 transition-colors ${
-                    isToday ? 'bg-blue-50' : ''
-                  }`}
-                >
-                  <div className={`text-xs font-medium ${isToday ? 'text-blue-600' : 'text-gray-500'}`}>
-                    {date.toLocaleDateString('en-US', { weekday: 'short' })}
-                  </div>
-                  <div className={`text-lg font-semibold ${isToday ? 'text-blue-600' : 'text-gray-900'}`}>
-                    {date.getDate()}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="relative">
-            {hours.map((hour) => {
-              const isCriticalTime = (hour >= 6 && hour < 9) || (hour >= 21 && hour < 22);
-              
-              return (
-                <div
-                  key={hour}
-                  className={`grid grid-cols-8 border-b border-gray-100 ${
-                    isCriticalTime ? 'bg-yellow-50/30' : ''
-                  }`}
-                >
-                  <div className="p-2 text-xs text-gray-500 font-medium">
-                    {formatHour12(hour)}
-                  </div>
-
-                  {days.map((day: any) => {
-                    const shiftsStartingThisHour = (day.shifts || []).filter((shift: any) => {
-                      const startHour = parseInt(shift.start_time.split(':')[0]);
-                      return hour === startHour;
-                    });
-
-                    return (
-                      <div key={`${day.date}-${hour}`} className="relative p-1 min-h-[3rem]">
-                        {shiftsStartingThisHour.map((shift: any) => {
-                          const paName = shift.requested_by_name || shift.requested_by || 'Unknown';
-                          const paId = shift.requested_by || shift.id;
-                          const color = getPAColor(paId);
-                          const isPending = shift.status === 'PENDING';
-
-                          return (
-                            <div
-                              key={shift.id}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (isPending && isAdmin) {
-                                  onShiftClick(shift);
-                                }
-                              }}
-                              className={`absolute inset-x-1 rounded px-2 py-1 text-xs font-medium shadow-sm z-10 flex flex-col justify-between transition-all ${
-                                isPending 
-                                  ? 'border-2 border-dashed cursor-pointer hover:scale-105' 
-                                  : 'text-white'
-                              }`}
-                              style={isPending ? {
-                                backgroundColor: color + '30',
-                                borderColor: color,
-                                color: color,
-                                top: '0.25rem',
-                                height: `${shift.duration_hours * 3}rem`,
-                              } : {
-                                backgroundColor: color,
-                                color: '#fff',
-                                top: '0.25rem',
-                                height: `${shift.duration_hours * 3}rem`,
-                              }}
-                              title={`${paName}: ${formatTime12Hour(shift.start_time)} - ${formatTime12Hour(shift.end_time)} ${isPending ? '(PENDING)' : ''}`}
-                            >
-                              <div>
-                                <div className="truncate font-semibold">
-                                  {isPending && '⏳ '}
-                                  {paName.split(' ')[0]}
-                                </div>
-                                <div className="text-xs opacity-90">{formatTime12Hour(shift.start_time)}</div>
-                              </div>
-                              <div className="text-xs opacity-90 text-right">{formatTime12Hour(shift.end_time)}</div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      <div className="border-t border-gray-200 px-4 py-3 bg-gray-50 text-xs text-gray-600 flex gap-4">
-        <span className="inline-flex items-center space-x-1">
-          <div className="w-3 h-3 bg-yellow-50 border border-yellow-200"></div>
-          <span>Critical times</span>
-        </span>
-        {isAdmin && (
-          <span className="inline-flex items-center space-x-1">
-            <div className="w-3 h-3 bg-blue-100 border-2 border-dashed border-blue-500"></div>
-            <span>Click pending to approve/reject</span>
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function DayView({ data, onSuggestShift, onShiftClick, isAdmin }: { data: any; onSuggestShift: (date: string, startTime?: string, endTime?: string) => void; onShiftClick: (shift: any) => void; isAdmin?: boolean }) {
-  const hours = Array.from({ length: 24 }, (_, i) => i);
-  const shifts = data.shifts || [];
-  const coverage = data.coverage || {};
+  const handleCellClick = (date: string, hour: number) => {
+    if (!isAdmin) return;
+    
+    const startTime = `${hour.toString().padStart(2, '0')}:00`;
+    const endHour = hour + 3;
+    const endTime = `${endHour.toString().padStart(2, '0')}:00`;
+    
+    onSuggestShift(date, startTime, endTime);
+  };
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-      <div className="border-b border-gray-200 px-4 py-4 bg-gray-50">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900">{data.day_name}</h3>
-            <div className="flex items-center space-x-4 mt-2 text-sm">
-              <span className={`inline-flex items-center space-x-1 ${coverage.morning_covered ? 'text-green-600' : 'text-red-600'}`}>
-                <div className={`w-2 h-2 rounded-full ${coverage.morning_covered ? 'bg-green-600' : 'bg-red-600'}`}></div>
-                <span>Morning (6-9 AM)</span>
-              </span>
-              <span className={`inline-flex items-center space-x-1 ${coverage.evening_covered ? 'text-green-600' : 'text-red-600'}`}>
-                <div className={`w-2 h-2 rounded-full ${coverage.evening_covered ? 'bg-green-600' : 'bg-red-600'}`}></div>
-                <span>Evening (9-10 PM)</span>
-              </span>
-            </div>
-          </div>
-          {isAdmin && (
-            <button
-              onClick={() => onSuggestShift(data.date)}
-              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+      <div className="grid grid-cols-8 border-b border-gray-200 bg-gray-50">
+        <div className="p-3 text-xs sm:text-sm font-semibold text-gray-700 border-r border-gray-200">
+          Time
+        </div>
+        {days.map((day: any) => {
+          const date = new Date(day.date);
+          const isToday = date.toDateString() === new Date().toDateString();
+          return (
+            <div
+              key={day.date}
+              className={`p-2 text-center cursor-pointer hover:bg-gray-100 transition-colors ${isToday ? 'bg-blue-50' : ''}`}
+              onClick={() => onDayClick(day.date)}
             >
-              + Suggest Shift
-            </button>
-          )}
-        </div>
+              <div className="text-xs text-gray-600">
+                {date.toLocaleDateString('en-US', { weekday: 'short' })}
+              </div>
+              <div className={`text-sm sm:text-base font-bold ${isToday ? 'text-blue-600' : 'text-gray-900'}`}>
+                {date.getDate()}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
-      <div className="overflow-x-auto">
-        <div className="min-w-[600px]">
-          <div className="relative">
-            {hours.map((hour) => {
-              const isCriticalTime = (hour >= 6 && hour < 9) || (hour >= 21 && hour < 22);
-              
-              const shiftsStartingThisHour = shifts.filter((shift: any) => {
-                const startHour = parseInt(shift.start_time.split(':')[0]);
-                return hour === startHour;
-              });
+      <div className="relative">
+        {hours.map((hour) => {
+          const isCriticalTime = (hour >= 6 && hour < 9) || (hour >= 21 && hour < 22);
+          
+          return (
+            <div
+              key={hour}
+              className={`grid grid-cols-8 border-b border-gray-100 ${
+                isCriticalTime ? 'bg-yellow-50/30' : ''
+              }`}
+            >
+              <div className="p-2 text-xs text-gray-500 font-medium">
+                {formatHour12(hour)}
+              </div>
 
-              return (
-                <div
-                  key={hour}
-                  className={`grid grid-cols-[100px_1fr] border-b border-gray-100 ${
-                    isCriticalTime ? 'bg-yellow-50/30' : ''
-                  }`}
-                >
-                  <div className="p-3 text-sm font-medium text-gray-500 border-r border-gray-100">
-                    {formatHour12(hour)}
-                  </div>
+              {days.map((day: any) => {
+                const shiftsStartingThisHour = (day.shifts || []).filter((shift: any) => {
+                  const startHour = parseInt(shift.start_time.split(':')[0]);
+                  return hour === startHour;
+                });
 
-                  <div className="relative p-2 min-h-[3rem]">
+                const hasShift = shiftsStartingThisHour.length > 0;
+
+                return (
+                  <div 
+                    key={`${day.date}-${hour}`} 
+                    className={`relative p-1 min-h-[3rem] ${isAdmin && !hasShift ? 'cursor-pointer hover:bg-blue-50 transition-colors' : ''}`}
+                    onClick={() => !hasShift && handleCellClick(day.date, hour)}
+                    title={isAdmin && !hasShift ? 'Click to suggest shift' : ''}
+                  >
                     {shiftsStartingThisHour.map((shift: any) => {
                       const paName = shift.requested_by_name || shift.requested_by || 'Unknown';
                       const paId = shift.requested_by || shift.id;
                       const color = getPAColor(paId);
                       const isPending = shift.status === 'PENDING';
+                      const isClickable = isShiftClickable(shift);
 
                       return (
                         <div
                           key={shift.id}
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (isPending && isAdmin) {
+                            if (isClickable) {
                               onShiftClick(shift);
                             }
                           }}
-                          className={`absolute inset-x-2 rounded-lg px-4 py-2 shadow-md flex flex-col justify-between transition-all ${
+                          className={`absolute inset-x-1 rounded px-2 py-1 text-xs font-medium shadow-sm z-10 flex flex-col justify-between transition-all ${
                             isPending 
                               ? 'border-2 border-dashed cursor-pointer hover:scale-105' 
+                              : isClickable
+                              ? 'text-white cursor-pointer hover:opacity-80'
                               : 'text-white'
                           }`}
                           style={isPending ? {
                             backgroundColor: color + '30',
                             borderColor: color,
                             color: color,
-                            top: '0.5rem',
-                            height: `${shift.duration_hours * 3}rem`,
+                            top: '0.25rem',
+                            height: `${Number(shift.duration_hours) * 3}rem`,
                           } : {
                             backgroundColor: color,
                             color: '#fff',
-                            top: '0.5rem',
-                            height: `${shift.duration_hours * 3}rem`,
+                            top: '0.25rem',
+                            height: `${Number(shift.duration_hours) * 3}rem`,
                           }}
+                          title={`${paName}: ${formatTime12Hour(shift.start_time)} - ${formatTime12Hour(shift.end_time)} ${isPending ? '(PENDING)' : isClickable ? '(Click to manage)' : ''}`}
                         >
                           <div>
-                            <div className="font-bold text-base">
+                            <div className="font-semibold truncate">
                               {isPending && '⏳ '}
                               {paName}
-                              {isPending && <span className="ml-2 text-xs font-normal">(Pending)</span>}
                             </div>
-                            <div className="text-sm opacity-90 mt-1">{formatTime12Hour(shift.start_time)}</div>
+                            <div className="text-xs opacity-90">{formatTime12Hour(shift.start_time)}</div>
                           </div>
-                          <div className="text-sm opacity-90 text-right font-medium">{formatTime12Hour(shift.end_time)}</div>
+                          <div className="text-xs opacity-90 text-right">{formatTime12Hour(shift.end_time)}</div>
                         </div>
                       );
                     })}
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+                );
+              })}
+            </div>
+          );
+        })}
       </div>
+
+      {isAdmin && (
+        <div className="border-t border-gray-200 bg-blue-50 px-4 py-3">
+          <p className="text-sm text-blue-800">
+            💡 <strong>Tip:</strong> Click on any empty time slot to suggest a shift for that time
+          </p>
+        </div>
+      )}
     </div>
   );
 }
+function DayView({ data, onSuggestShift, onShiftClick, isAdmin, currentUserId }: { data: any; onSuggestShift: (date: string, startTime?: string, endTime?: string) => void; onShiftClick: (shift: any) => void; isAdmin?: boolean; currentUserId?: number }) {
+  const hours = Array.from({ length: 24 }, (_, i) => i);
+  const shifts = data.shifts || [];
 
+  const isShiftClickable = (shift: any): boolean => {
+    if (shift.status === 'PENDING' && isAdmin) return true;
+    if (shift.status === 'APPROVED' && isAdmin) return true;
+    if (shift.status === 'APPROVED' && shift.requested_by === currentUserId) return true;
+    return false;
+  };
+
+  const getShiftsCoveringHour = (hour: number) => {
+    return shifts.filter((shift: any) => {
+      const startHour = parseInt(shift.start_time.split(':')[0]);
+      const endHour = parseInt(shift.end_time.split(':')[0]);
+      const endMinute = parseInt(shift.end_time.split(':')[1]);
+      
+      return startHour <= hour && (endHour > hour || (endHour === hour && endMinute > 0));
+    });
+  };
+
+  const handleCellClick = (hour: number) => {
+    if (!isAdmin) return;
+    
+    // Check if any shift covers this hour
+    const coveringShifts = getShiftsCoveringHour(hour);
+    if (coveringShifts.length > 0) {
+      // Click the first covering shift
+      const shift = coveringShifts[0];
+      if (isShiftClickable(shift)) {
+        onShiftClick(shift);
+      }
+      return;
+    }
+    
+    // Otherwise suggest a new shift
+    const startTime = `${hour.toString().padStart(2, '0')}:00`;
+    const endHour = hour + 3;
+    const endTime = `${endHour.toString().padStart(2, '0')}:00`;
+    onSuggestShift(data.date, startTime, endTime);
+  };
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+      <div className="border-b border-gray-200 bg-gray-50 p-4">
+        <h3 className="text-lg font-semibold text-gray-900">{data.date_formatted}</h3>
+        <p className="text-sm text-gray-600 mt-1">
+          {shifts.length} shift{shifts.length !== 1 ? 's' : ''} scheduled
+        </p>
+      </div>
+
+      <div className="relative">
+        {hours.map((hour) => {
+          const isCriticalTime = (hour >= 6 && hour < 9) || (hour >= 21 && hour < 22);
+          const shiftsStartingThisHour = shifts.filter((shift: any) => {
+            const startHour = parseInt(shift.start_time.split(':')[0]);
+            return hour === startHour;
+          });
+          
+          const shiftsCoveringThisHour = getShiftsCoveringHour(hour);
+          const hasShiftCoverage = shiftsCoveringThisHour.length > 0;
+
+          return (
+            <div
+              key={hour}
+              className={`flex border-b border-gray-100 ${
+                isCriticalTime ? 'bg-yellow-50/30' : ''
+              }`}
+            >
+              <div className="p-3 text-sm font-medium text-gray-500 border-r border-gray-100">
+                {formatHour12(hour)}
+              </div>
+
+              <div 
+                className={`relative p-2 min-h-[3rem] flex-1 ${
+                  isAdmin && hasShiftCoverage && isShiftClickable(shiftsCoveringThisHour[0])
+                    ? 'cursor-pointer hover:bg-blue-50/50 transition-colors'
+                    : isAdmin && !hasShiftCoverage
+                    ? 'cursor-pointer hover:bg-blue-50 transition-colors'
+                    : ''
+                }`}
+                onClick={() => handleCellClick(hour)}
+                title={
+                  isAdmin && hasShiftCoverage && isShiftClickable(shiftsCoveringThisHour[0])
+                    ? 'Click to manage shift'
+                    : isAdmin && !hasShiftCoverage
+                    ? 'Click to suggest shift'
+                    : ''
+                }
+              >
+                {shiftsStartingThisHour.map((shift: any) => {
+                  const paName = shift.requested_by_name || shift.requested_by || 'Unknown';
+                  const paId = shift.requested_by || shift.id;
+                  const color = getPAColor(paId);
+                  const isPending = shift.status === 'PENDING';
+                  const isClickable = isShiftClickable(shift);
+
+                  return (
+                    <div
+                      key={shift.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (isClickable) {
+                          onShiftClick(shift);
+                        }
+                      }}
+                      className={`absolute inset-x-2 rounded-lg px-4 py-2 shadow-md flex flex-col justify-between transition-all ${
+                        isPending 
+                          ? 'border-2 border-dashed cursor-pointer hover:scale-105' 
+                          : isClickable
+                          ? 'text-white cursor-pointer hover:opacity-80'
+                          : 'text-white'
+                      }`}
+                      style={isPending ? {
+                        backgroundColor: color + '30',
+                        borderColor: color,
+                        color: color,
+                        top: '0.5rem',
+                        height: `${Number(shift.duration_hours) * 3}rem`,
+                        pointerEvents: 'auto',
+                      } : {
+                        backgroundColor: color,
+                        color: '#fff',
+                        top: '0.5rem',
+                        height: `${Number(shift.duration_hours) * 3}rem`,
+                        pointerEvents: 'auto',
+                      }}
+                    >
+                      <div>
+                        <div className="font-bold text-base">
+                          {isPending && '⏳ '}
+                          {paName}
+                          {isPending && <span className="ml-2 text-xs font-normal">(Pending)</span>}
+                        </div>
+                        <div className="text-sm opacity-90 mt-1">{formatTime12Hour(shift.start_time)}</div>
+                      </div>
+                      <div className="text-sm opacity-90 text-right font-medium">{formatTime12Hour(shift.end_time)}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {isAdmin && (
+        <div className="border-t border-gray-200 bg-blue-50 px-4 py-3">
+          <p className="text-sm text-blue-800">
+            💡 <strong>Tip:</strong> Click on any empty time slot to suggest a shift, or click on a shift to manage it
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
 function ApproveRejectModal({ isOpen, shift, onClose, onSuccess }: { isOpen: boolean; shift: any; onClose: () => void; onSuccess: () => void }) {
-  const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState<'choose' | 'approve' | 'reject'>('choose');
   const [adminNotes, setAdminNotes] = useState('');
   const [rejectedReason, setRejectedReason] = useState('');
-  const [mode, setMode] = useState<'choose' | 'approve' | 'reject'>('choose');
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -4836,29 +4952,33 @@ function ApproveRejectModal({ isOpen, shift, onClose, onSuccess }: { isOpen: boo
   }, [isOpen]);
 
   const handleApprove = async () => {
+    if (!shift) return;
+    setLoading(true);
     try {
-      setLoading(true);
       await shiftsAPI.approveRequest(shift.id, adminNotes);
       onSuccess();
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to approve request');
+      if (err.response?.data?.error) {
+        alert(err.response.data.error);
+      } else {
+        alert('Failed to approve shift request');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   const handleReject = async () => {
-    if (!rejectedReason.trim()) {
+    if (!shift || !rejectedReason.trim()) {
       alert('Please provide a reason for rejection');
       return;
     }
-    
+    setLoading(true);
     try {
-      setLoading(true);
       await shiftsAPI.rejectRequest(shift.id, rejectedReason);
       onSuccess();
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to reject request');
+      alert('Failed to reject shift request');
     } finally {
       setLoading(false);
     }
@@ -4867,120 +4987,113 @@ function ApproveRejectModal({ isOpen, shift, onClose, onSuccess }: { isOpen: boo
   if (!isOpen || !shift) return null;
 
   return (
-    <div className="fixed inset-0 z-[9999] overflow-y-auto">
-      <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-        <div 
-          className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" 
-          onClick={onClose}
-        />
+    <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4 z-[9998]">
+      <div className="bg-white rounded-lg max-w-lg w-full shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full relative z-[9999]">
+        <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            {mode === 'choose' && 'Review Shift Request'}
+            {mode === 'approve' && 'Approve Shift Request'}
+            {mode === 'reject' && 'Reject Shift Request'}
+          </h3>
 
-        <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full relative z-[9999]">
-          <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              {mode === 'choose' && 'Review Shift Request'}
-              {mode === 'approve' && 'Approve Shift Request'}
-              {mode === 'reject' && 'Reject Shift Request'}
-            </h3>
-
-            <div className="mb-4 p-4 bg-gray-50 rounded-lg">
-              <p className="text-sm font-medium text-gray-900">PA: {shift.requested_by_name}</p>
-              <p className="text-sm text-gray-600">Date: {new Date(shift.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</p>
-              <p className="text-sm text-gray-600">Time: {formatTime12Hour(shift.start_time)} - {formatTime12Hour(shift.end_time)} ({shift.duration_hours}h)</p>
-              {shift.notes && (
-                <p className="text-sm text-gray-600 mt-2 italic">Notes: "{shift.notes}"</p>
-              )}
-            </div>
-
-            {mode === 'choose' && (
-              <div className="space-y-3">
-                <button
-                  onClick={() => setMode('approve')}
-                  className="w-full px-4 py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors"
-                >
-                  ✓ Approve Request
-                </button>
-                <button
-                  onClick={() => setMode('reject')}
-                  className="w-full px-4 py-3 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors"
-                >
-                  ✗ Reject Request
-                </button>
-                <button
-                  onClick={onClose}
-                  className="w-full px-4 py-3 bg-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-300 transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
-            )}
-
-            {mode === 'approve' && (
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Admin Notes (Optional)
-                  </label>
-                  <textarea
-                    value={adminNotes}
-                    onChange={(e) => setAdminNotes(e.target.value)}
-                    rows={3}
-                    placeholder="Any notes for this approval..."
-                    className="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-green-500"
-                  />
-                </div>
-                <div className="flex space-x-2">
-                  <button
-                    onClick={handleApprove}
-                    disabled={loading}
-                    className="flex-1 px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 disabled:opacity-50"
-                  >
-                    {loading ? 'Approving...' : 'Confirm Approval'}
-                  </button>
-                  <button
-                    onClick={() => setMode('choose')}
-                    disabled={loading}
-                    className="px-4 py-2 bg-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-300"
-                  >
-                    Back
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {mode === 'reject' && (
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Rejection Reason *
-                  </label>
-                  <textarea
-                    value={rejectedReason}
-                    onChange={(e) => setRejectedReason(e.target.value)}
-                    rows={3}
-                    required
-                    placeholder="Please explain why this request is being rejected..."
-                    className="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-red-500"
-                  />
-                </div>
-                <div className="flex space-x-2">
-                  <button
-                    onClick={handleReject}
-                    disabled={loading}
-                    className="flex-1 px-4 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 disabled:opacity-50"
-                  >
-                    {loading ? 'Rejecting...' : 'Confirm Rejection'}
-                  </button>
-                  <button
-                    onClick={() => setMode('choose')}
-                    disabled={loading}
-                    className="px-4 py-2 bg-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-300"
-                  >
-                    Back
-                  </button>
-                </div>
-              </div>
+          <div className="mb-4 p-4 bg-gray-50 rounded-lg">
+            <p className="text-sm font-medium text-gray-900">PA: {shift.requested_by_name}</p>
+            <p className="text-sm text-gray-600">Date: {new Date(shift.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</p>
+            <p className="text-sm text-gray-600">Time: {formatTime12Hour(shift.start_time)} - {formatTime12Hour(shift.end_time)} ({shift.duration_hours}h)</p>
+            {shift.notes && (
+              <p className="text-sm text-gray-600 mt-2 italic">Notes: "{shift.notes}"</p>
             )}
           </div>
+
+          {mode === 'choose' && (
+            <div className="space-y-3">
+              <button
+                onClick={() => setMode('approve')}
+                className="w-full px-4 py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors"
+              >
+                ✓ Approve Request
+              </button>
+              <button
+                onClick={() => setMode('reject')}
+                className="w-full px-4 py-3 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors"
+              >
+                ✗ Reject Request
+              </button>
+              <button
+                onClick={onClose}
+                className="w-full px-4 py-3 bg-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-300 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+
+          {mode === 'approve' && (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Admin Notes (Optional)
+                </label>
+                <textarea
+                  value={adminNotes}
+                  onChange={(e) => setAdminNotes(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                  rows={3}
+                  placeholder="Add any notes about this approval..."
+                />
+              </div>
+              <div className="flex space-x-3">
+                <button
+                  onClick={handleApprove}
+                  disabled={loading}
+                  className="flex-1 px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+                >
+                  {loading ? 'Approving...' : 'Confirm Approval'}
+                </button>
+                <button
+                  onClick={() => setMode('choose')}
+                  disabled={loading}
+                  className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-300 transition-colors disabled:opacity-50"
+                >
+                  Back
+                </button>
+              </div>
+            </div>
+          )}
+
+          {mode === 'reject' && (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Reason for Rejection <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={rejectedReason}
+                  onChange={(e) => setRejectedReason(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-500"
+                  rows={3}
+                  placeholder="Please explain why this request is being rejected..."
+                  required
+                />
+              </div>
+              <div className="flex space-x-3">
+                <button
+                  onClick={handleReject}
+                  disabled={loading || !rejectedReason.trim()}
+                  className="flex-1 px-4 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+                >
+                  {loading ? 'Rejecting...' : 'Confirm Rejection'}
+                </button>
+                <button
+                  onClick={() => setMode('choose')}
+                  disabled={loading}
+                  className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-300 transition-colors disabled:opacity-50"
+                >
+                  Back
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
