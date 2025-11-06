@@ -11,7 +11,12 @@ export default function RequestsPage() {
 
   const [requests, setRequests] = useState<ShiftRequest[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
+  const [showApproved, setShowApproved] = useState(false);
+  const [showRejected, setShowRejected] = useState(false);
+  const [rejectingId, setRejectingId] = useState<number | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -37,34 +42,72 @@ export default function RequestsPage() {
         requestsList = requestsList.filter(r => r.requested_by === user?.id);
       }
       
+      requestsList.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      
       setRequests(requestsList);
     } catch (err) {
       console.error('Failed to load requests:', err);
+      showToast('Failed to load requests', 'error');
     } finally {
       setLoading(false);
     }
   };
 
+  const showToast = (message: string, type: 'success' | 'error') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
   const handleApprove = async (id: number) => {
     try {
       await shiftsAPI.approveRequest(id);
+      showToast('Shift approved successfully!', 'success');
+      setSelectedIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(id);
+        return newSet;
+      });
       loadRequests();
     } catch (err: any) {
       console.error('Failed to approve request:', err);
-      alert(err.response?.data?.error || 'Failed to approve request');
+      showToast(err.response?.data?.error || 'Failed to approve request', 'error');
     }
   };
 
-  const handleReject = async (id: number) => {
-    const reason = prompt('Enter rejection reason:');
-    if (!reason) return;
+  const handleBulkApprove = async () => {
+    if (selectedIds.size === 0) return;
+    
+    try {
+      await Promise.all(Array.from(selectedIds).map(id => shiftsAPI.approveRequest(id)));
+      showToast(`${selectedIds.size} shifts approved successfully!`, 'success');
+      setSelectedIds(new Set());
+      loadRequests();
+    } catch (err) {
+      console.error('Failed to bulk approve:', err);
+      showToast('Some approvals failed', 'error');
+    }
+  };
+
+  const handleRejectClick = (id: number) => {
+    setRejectingId(id);
+    setRejectReason('');
+  };
+
+  const handleRejectConfirm = async (id: number) => {
+    if (!rejectReason.trim()) {
+      showToast('Please provide a rejection reason', 'error');
+      return;
+    }
 
     try {
-      await shiftsAPI.rejectRequest(id, reason);
+      await shiftsAPI.rejectRequest(id, rejectReason);
+      showToast('Request rejected', 'success');
+      setRejectingId(null);
+      setRejectReason('');
       loadRequests();
     } catch (err) {
       console.error('Failed to reject request:', err);
-      alert('Failed to reject request');
+      showToast('Failed to reject request', 'error');
     }
   };
 
@@ -73,17 +116,33 @@ export default function RequestsPage() {
 
     try {
       await shiftsAPI.cancelRequest(id);
+      showToast('Request cancelled', 'success');
       loadRequests();
     } catch (err) {
       console.error('Failed to cancel request:', err);
-      alert('Failed to cancel request');
+      showToast('Failed to cancel request', 'error');
     }
   };
 
-  const filteredRequests = requests.filter(req => {
-    if (filter === 'all') return true;
-    return req.status.toLowerCase() === filter;
-  });
+  const toggleSelection = (id: number) => {
+    setSelectedIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === pendingRequests.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(pendingRequests.map(r => r.id)));
+    }
+  };
 
   const formatTime = (time: string) => {
     const [hours, minutes] = time.split(':');
@@ -93,57 +152,107 @@ export default function RequestsPage() {
     return `${hour12}:${minutes} ${ampm}`;
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'PENDING':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'APPROVED':
-        return 'bg-green-100 text-green-800';
-      case 'REJECTED':
-        return 'bg-red-100 text-red-800';
-      case 'CANCELLED':
-        return 'bg-gray-100 text-gray-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    if (date.toDateString() === today.toDateString()) {
+      return 'TODAY';
+    } else if (date.toDateString() === tomorrow.toDateString()) {
+      return 'TOMORROW';
+    } else {
+      return date.toLocaleDateString('en-US', { 
+        weekday: 'short',
+        month: 'short', 
+        day: 'numeric',
+        year: date.getFullYear() !== today.getFullYear() ? 'numeric' : undefined
+      });
     }
   };
 
+  const isUrgent = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return date <= tomorrow;
+  };
+
+  const isOvernight = (startTime: string, endTime: string) => {
+    const start = parseInt(startTime.split(':')[0]);
+    const end = parseInt(endTime.split(':')[0]);
+    return end < start;
+  };
+
+  const pendingRequests = requests.filter(r => r.status === 'PENDING');
+  const approvedRequests = requests.filter(r => r.status === 'APPROVED');
+  const rejectedRequests = requests.filter(r => r.status === 'REJECTED' || r.status === 'CANCELLED');
+
   if (authLoading || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p>Loading...</p>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-blue-600 border-r-transparent"></div>
+          <p className="mt-2 text-gray-600">Loading requests...</p>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow-sm">
+      {/* Toast Notification */}
+      {toast && (
+        <div className="fixed top-4 right-4 z-50 animate-slide-in-right">
+          <div className={`rounded-lg shadow-lg p-4 ${
+            toast.type === 'success' ? 'bg-green-500' : 'bg-red-500'
+          } text-white flex items-center space-x-3`}>
+            {toast.type === 'success' ? (
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            ) : (
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            )}
+            <span className="font-medium">{toast.message}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Navigation */}
+      <nav className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center space-x-4">
               <button
                 onClick={() => router.push(isAdmin ? '/admin/dashboard' : '/dashboard')}
-                className="text-gray-600 hover:text-gray-900"
+                className="text-gray-600 hover:text-gray-900 font-medium transition-colors"
               >
-                ← Back to Dashboard
+                ← Back
               </button>
               <h1 className="text-xl font-bold text-gray-900">
-                {isAdmin ? 'All Shift Requests' : 'My Shift Requests'}
+                {isAdmin ? 'Shift Requests' : 'My Requests'}
               </h1>
             </div>
             <div className="flex items-center space-x-4">
               {isPA && (
                 <button
                   onClick={() => router.push('/requests/new')}
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 transition-colors"
                 >
+                  <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
                   New Request
                 </button>
               )}
               <button
                 onClick={logout}
-                className="text-sm text-gray-600 hover:text-gray-900"
+                className="text-sm text-gray-600 hover:text-gray-900 transition-colors"
               >
                 Logout
               </button>
@@ -152,169 +261,307 @@ export default function RequestsPage() {
         </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="px-4 sm:px-0">
-          <div className="mb-6">
-            <div className="border-b border-gray-200">
-              <nav className="-mb-px flex space-x-8">
-                <button
-                  onClick={() => setFilter('all')}
-                  className={`${
-                    filter === 'all'
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
-                >
-                  All ({requests.length})
-                </button>
-                <button
-                  onClick={() => setFilter('pending')}
-                  className={`${
-                    filter === 'pending'
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
-                >
-                  Pending ({requests.filter(r => r.status === 'PENDING').length})
-                </button>
-                <button
-                  onClick={() => setFilter('approved')}
-                  className={`${
-                    filter === 'approved'
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
-                >
-                  Approved ({requests.filter(r => r.status === 'APPROVED').length})
-                </button>
-                <button
-                  onClick={() => setFilter('rejected')}
-                  className={`${
-                    filter === 'rejected'
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
-                >
-                  Rejected ({requests.filter(r => r.status === 'REJECTED').length})
-                </button>
-              </nav>
+      {/* Main Content */}
+      <main className="max-w-5xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+        
+        {/* Pending Requests Section */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center space-x-3">
+              <h2 className="text-2xl font-bold text-gray-900">
+                Pending Approval
+              </h2>
+              <span className="px-3 py-1 text-sm font-semibold text-yellow-800 bg-yellow-100 rounded-full">
+                {pendingRequests.length}
+              </span>
             </div>
-          </div>
-
-          <div className="bg-white shadow overflow-hidden sm:rounded-md">
-            {filteredRequests.length === 0 ? (
-              <div className="text-center py-12">
-                <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                <h3 className="mt-2 text-sm font-medium text-gray-900">No requests</h3>
-                <p className="mt-1 text-sm text-gray-500">
-                  {filter === 'all' ? (isPA ? 'Get started by creating a new shift request.' : 'No requests to display.') : `No ${filter} requests.`}
-                </p>
-                {filter === 'all' && isPA && (
-                  <div className="mt-6">
-                    <button
-                      onClick={() => router.push('/requests/new')}
-                      className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
-                    >
-                      <svg className="-ml-1 mr-2 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                      New Request
-                    </button>
-                  </div>
+            {isAdmin && pendingRequests.length > 0 && (
+              <div className="flex items-center space-x-3">
+                <button
+                  onClick={toggleSelectAll}
+                  className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                >
+                  {selectedIds.size === pendingRequests.length ? 'Deselect All' : 'Select All'}
+                </button>
+                {selectedIds.size > 0 && (
+                  <button
+                    onClick={handleBulkApprove}
+                    className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
+                  >
+                    Approve Selected ({selectedIds.size})
+                  </button>
                 )}
               </div>
-            ) : (
-              <ul className="divide-y divide-gray-200">
-                {filteredRequests.map((request) => (
-                  <li key={request.id}>
-                    <div className="px-4 py-4 sm:px-6 hover:bg-gray-50">
-                      <div className="flex items-center justify-between">
+            )}
+          </div>
+
+          {pendingRequests.length === 0 ? (
+            <div className="bg-white rounded-lg shadow-sm border-2 border-dashed border-gray-300 p-12 text-center">
+              <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <h3 className="mt-2 text-sm font-medium text-gray-900">All caught up!</h3>
+              <p className="mt-1 text-sm text-gray-500">No pending requests to review.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {pendingRequests.map((request) => (
+                <div
+                  key={request.id}
+                  className={`bg-white rounded-lg shadow-sm border-2 transition-all ${
+                    isUrgent(request.date) 
+                      ? 'border-orange-300 bg-orange-50/30' 
+                      : 'border-gray-200 hover:border-blue-300'
+                  } ${selectedIds.has(request.id) ? 'ring-2 ring-blue-500' : ''}`}
+                >
+                  <div className="p-5">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-start space-x-4 flex-1">
+                        {isAdmin && (
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(request.id)}
+                            onChange={() => toggleSelection(request.id)}
+                            className="mt-1 h-5 w-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                          />
+                        )}
+                        
                         <div className="flex-1">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-lg font-medium text-gray-900">
-                                {new Date(request.date).toLocaleDateString('en-US', { 
-                                  weekday: 'long', 
-                                  month: 'long', 
-                                  day: 'numeric', 
-                                  year: 'numeric' 
-                                })}
-                              </p>
-                              {isAdmin && (
-                                <p className="text-sm text-gray-600 mt-1">
-                                  PA: {request.requested_by_name}
-                                </p>
-                              )}
-                            </div>
-                            <span className={`ml-2 px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(request.status)}`}>
-                              {request.status}
+                          <div className="flex items-center space-x-3 mb-2">
+                            <span className={`inline-flex items-center px-3 py-1 rounded-lg text-sm font-bold ${
+                              isUrgent(request.date) 
+                                ? 'bg-orange-500 text-white' 
+                                : 'bg-blue-500 text-white'
+                            }`}>
+                              {formatDate(request.date)}
                             </span>
+                            {isOvernight(request.start_time, request.end_time) && (
+                              <span className="inline-flex items-center px-2 py-1 rounded bg-purple-100 text-purple-800 text-xs font-medium">
+                                🌙 Overnight
+                              </span>
+                            )}
                           </div>
-                          <div className="mt-2 sm:flex sm:justify-between">
-                            <div className="sm:flex space-x-6">
-                              <p className="flex items-center text-sm text-gray-500">
-                                <svg className="flex-shrink-0 mr-1.5 h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                                {formatTime(request.start_time)} - {formatTime(request.end_time)} ({request.duration_hours} hrs)
-                              </p>
-                              <p className="flex items-center text-sm text-gray-500">
-                                <svg className="flex-shrink-0 mr-1.5 h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                </svg>
-                                {request.schedule_period_name}
-                              </p>
-                            </div>
-                          </div>
-                          {request.notes && (
-                            <p className="mt-2 text-sm text-gray-600">
-                              <span className="font-medium">Notes:</span> {request.notes}
+
+                          {isAdmin && (
+                            <p className="text-lg font-semibold text-gray-900 mb-1">
+                              {request.requested_by_name}
                             </p>
                           )}
-                          {request.rejected_reason && (
-                            <div className="mt-2 bg-red-50 border border-red-200 rounded p-2">
-                              <p className="text-sm text-red-800">
-                                <span className="font-medium">Rejection reason:</span> {request.rejected_reason}
+
+                          <div className="flex items-center space-x-4 text-gray-600 mb-2">
+                            <div className="flex items-center space-x-1.5">
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              <span className="font-medium">
+                                {formatTime(request.start_time)} → {formatTime(request.end_time)}
+                              </span>
+                              <span className="text-gray-400">({request.duration_hours}h)</span>
+                            </div>
+                          </div>
+
+                          <p className="text-sm text-gray-500">
+                            📅 {request.schedule_period_name}
+                          </p>
+
+                          {request.notes && (
+                            <div className="mt-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                              <p className="text-sm text-gray-700">
+                                <span className="font-medium">Notes:</span> {request.notes}
                               </p>
+                            </div>
+                          )}
+
+                          {rejectingId === request.id && (
+                            <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Rejection Reason *
+                              </label>
+                              <textarea
+                                value={rejectReason}
+                                onChange={(e) => setRejectReason(e.target.value)}
+                                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                                rows={3}
+                                placeholder="Explain why this request is being rejected..."
+                                autoFocus
+                              />
+                              <div className="flex space-x-2 mt-3">
+                                <button
+                                  onClick={() => handleRejectConfirm(request.id)}
+                                  disabled={!rejectReason.trim()}
+                                  className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  Confirm Rejection
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setRejectingId(null);
+                                    setRejectReason('');
+                                  }}
+                                  className="px-4 py-2 bg-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-300 transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
                             </div>
                           )}
                         </div>
-                        <div className="ml-4 flex space-x-2">
-                          {request.status === 'PENDING' && isAdmin && (
+                      </div>
+
+                      {rejectingId !== request.id && (
+                        <div className="flex flex-col space-y-2 ml-4">
+                          {isAdmin && (
                             <>
                               <button
                                 onClick={() => handleApprove(request.id)}
-                                className="inline-flex items-center px-3 py-2 border border-green-300 shadow-sm text-sm leading-4 font-medium rounded-md text-green-700 bg-white hover:bg-green-50"
+                                className="px-6 py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors shadow-sm hover:shadow flex items-center space-x-2"
                               >
-                                Approve
+                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                                <span>Approve</span>
                               </button>
                               <button
-                                onClick={() => handleReject(request.id)}
-                                className="inline-flex items-center px-3 py-2 border border-red-300 shadow-sm text-sm leading-4 font-medium rounded-md text-red-700 bg-white hover:bg-red-50"
+                                onClick={() => handleRejectClick(request.id)}
+                                className="px-6 py-3 bg-white border-2 border-red-300 text-red-700 font-medium rounded-lg hover:bg-red-50 transition-colors flex items-center space-x-2"
                               >
-                                Reject
+                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                                <span>Reject</span>
                               </button>
                             </>
                           )}
-                          {request.status === 'PENDING' && isPA && (
+                          {isPA && (
                             <button
                               onClick={() => handleCancel(request.id)}
-                              className="inline-flex items-center px-3 py-2 border border-red-300 shadow-sm text-sm leading-4 font-medium rounded-md text-red-700 bg-white hover:bg-red-50"
+                              className="px-4 py-2 bg-white border-2 border-red-300 text-red-700 font-medium rounded-lg hover:bg-red-50 transition-colors"
                             >
                               Cancel
                             </button>
                           )}
                         </div>
-                      </div>
+                      )}
                     </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
+
+        {/* Approved Requests Section */}
+        <div className="mb-8">
+          <button
+            onClick={() => setShowApproved(!showApproved)}
+            className="w-full flex items-center justify-between p-4 bg-white rounded-lg shadow-sm border border-gray-200 hover:bg-gray-50 transition-colors"
+          >
+            <div className="flex items-center space-x-3">
+              <h2 className="text-xl font-semibold text-gray-900">Approved</h2>
+              <span className="px-2.5 py-0.5 text-sm font-semibold text-green-800 bg-green-100 rounded-full">
+                {approvedRequests.length}
+              </span>
+            </div>
+            <svg
+              className={`w-5 h-5 text-gray-500 transition-transform ${showApproved ? 'rotate-180' : ''}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {showApproved && (
+            <div className="mt-3 space-y-2">
+              {approvedRequests.map((request) => (
+                <div
+                  key={request.id}
+                  className="bg-white rounded-lg p-4 border-l-4 border-green-500 shadow-sm"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center space-x-3">
+                        <span className="font-semibold text-gray-900">{formatDate(request.date)}</span>
+                        {isAdmin && <span className="text-gray-600">• {request.requested_by_name}</span>}
+                      </div>
+                      <p className="text-sm text-gray-600 mt-1">
+                        {formatTime(request.start_time)} → {formatTime(request.end_time)} ({request.duration_hours}h)
+                      </p>
+                    </div>
+                    <span className="px-3 py-1 text-xs font-semibold text-green-800 bg-green-100 rounded-full">
+                      APPROVED
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Rejected Requests Section */}
+        <div>
+          <button
+            onClick={() => setShowRejected(!showRejected)}
+            className="w-full flex items-center justify-between p-4 bg-white rounded-lg shadow-sm border border-gray-200 hover:bg-gray-50 transition-colors"
+          >
+            <div className="flex items-center space-x-3">
+              <h2 className="text-xl font-semibold text-gray-900">Rejected / Cancelled</h2>
+              <span className="px-2.5 py-0.5 text-sm font-semibold text-gray-800 bg-gray-200 rounded-full">
+                {rejectedRequests.length}
+              </span>
+            </div>
+            <svg
+              className={`w-5 h-5 text-gray-500 transition-transform ${showRejected ? 'rotate-180' : ''}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {showRejected && (
+            <div className="mt-3 space-y-2">
+              {rejectedRequests.map((request) => (
+                <div
+                  key={request.id}
+                  className="bg-white rounded-lg p-4 border-l-4 border-red-400 shadow-sm"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <div className="flex items-center space-x-3">
+                        <span className="font-semibold text-gray-900">{formatDate(request.date)}</span>
+                        {isAdmin && <span className="text-gray-600">• {request.requested_by_name}</span>}
+                      </div>
+                      <p className="text-sm text-gray-600 mt-1">
+                        {formatTime(request.start_time)} → {formatTime(request.end_time)} ({request.duration_hours}h)
+                      </p>
+                    </div>
+                    <span className="px-3 py-1 text-xs font-semibold text-red-800 bg-red-100 rounded-full">
+                      {request.status}
+                    </span>
+                  </div>
+                  {request.rejected_reason && (
+                    <div className="mt-2 p-2 bg-red-50 rounded border border-red-200">
+                      <p className="text-sm text-red-800">
+                        <span className="font-medium">Reason:</span> {request.rejected_reason}
+                      </p>
+                    </div>
+                  )}
+                  {request.cancellation_reason && (
+                    <div className="mt-2 p-2 bg-gray-100 rounded border border-gray-300">
+                      <p className="text-sm text-gray-700">
+                        <span className="font-medium">Cancellation reason:</span> {request.cancellation_reason}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
       </main>
     </div>
   );
