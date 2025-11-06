@@ -741,7 +741,6 @@ function WeekView({ data, onDayClick, onSuggestShift, onShiftClick, isAdmin, cur
     </div>
   );
 }
-
 function DayView({ data, onSuggestShift, onShiftClick, isAdmin, currentUserId }: { data: any; onSuggestShift: (date: string, startTime?: string, endTime?: string) => void; onShiftClick: (shift: any) => void; isAdmin?: boolean; currentUserId?: number }) {
   const hours = Array.from({ length: 24 }, (_, i) => i);
   const shifts = data.shifts || [];
@@ -759,9 +758,6 @@ function DayView({ data, onSuggestShift, onShiftClick, isAdmin, currentUserId }:
       const endHour = parseInt(shift.end_time.split(':')[0]);
       const endMinute = parseInt(shift.end_time.split(':')[1]);
       
-      // Shift covers this hour if:
-      // - It starts at or before this hour AND
-      // - It ends after this hour (or exactly at the end if minutes > 0)
       return startHour <= hour && (endHour > hour || (endHour === hour && endMinute > 0));
     });
   };
@@ -769,10 +765,21 @@ function DayView({ data, onSuggestShift, onShiftClick, isAdmin, currentUserId }:
   const handleCellClick = (hour: number) => {
     if (!isAdmin) return;
     
+    // Check if any shift covers this hour
+    const coveringShifts = getShiftsCoveringHour(hour);
+    if (coveringShifts.length > 0) {
+      // Click the first covering shift
+      const shift = coveringShifts[0];
+      if (isShiftClickable(shift)) {
+        onShiftClick(shift);
+      }
+      return;
+    }
+    
+    // Otherwise suggest a new shift
     const startTime = `${hour.toString().padStart(2, '0')}:00`;
     const endHour = hour + 3;
     const endTime = `${endHour.toString().padStart(2, '0')}:00`;
-    
     onSuggestShift(data.date, startTime, endTime);
   };
 
@@ -808,9 +815,21 @@ function DayView({ data, onSuggestShift, onShiftClick, isAdmin, currentUserId }:
               </div>
 
               <div 
-                className={`relative p-2 min-h-[3rem] flex-1 ${isAdmin && !hasShiftCoverage ? 'cursor-pointer hover:bg-blue-50 transition-colors' : ''}`}
-                onClick={() => !hasShiftCoverage && handleCellClick(hour)}
-                title={isAdmin && !hasShiftCoverage ? 'Click to suggest shift' : ''}
+                className={`relative p-2 min-h-[3rem] flex-1 ${
+                  isAdmin && hasShiftCoverage && isShiftClickable(shiftsCoveringThisHour[0])
+                    ? 'cursor-pointer hover:bg-blue-50/50 transition-colors'
+                    : isAdmin && !hasShiftCoverage
+                    ? 'cursor-pointer hover:bg-blue-50 transition-colors'
+                    : ''
+                }`}
+                onClick={() => handleCellClick(hour)}
+                title={
+                  isAdmin && hasShiftCoverage && isShiftClickable(shiftsCoveringThisHour[0])
+                    ? 'Click to manage shift'
+                    : isAdmin && !hasShiftCoverage
+                    ? 'Click to suggest shift'
+                    : ''
+                }
               >
                 {shiftsStartingThisHour.map((shift: any) => {
                   const paName = shift.requested_by_name || shift.requested_by || 'Unknown';
@@ -841,11 +860,13 @@ function DayView({ data, onSuggestShift, onShiftClick, isAdmin, currentUserId }:
                         color: color,
                         top: '0.5rem',
                         height: `${Number(shift.duration_hours) * 3}rem`,
+                        pointerEvents: 'auto',
                       } : {
                         backgroundColor: color,
                         color: '#fff',
                         top: '0.5rem',
                         height: `${Number(shift.duration_hours) * 3}rem`,
+                        pointerEvents: 'auto',
                       }}
                     >
                       <div>
@@ -869,14 +890,13 @@ function DayView({ data, onSuggestShift, onShiftClick, isAdmin, currentUserId }:
       {isAdmin && (
         <div className="border-t border-gray-200 bg-blue-50 px-4 py-3">
           <p className="text-sm text-blue-800">
-            💡 <strong>Tip:</strong> Click on any empty time slot to suggest a shift for that time
+            💡 <strong>Tip:</strong> Click on any empty time slot to suggest a shift, or click on a shift to manage it
           </p>
         </div>
       )}
     </div>
   );
 }
-
 function ApproveRejectModal({ isOpen, shift, onClose, onSuccess }: { isOpen: boolean; shift: any; onClose: () => void; onSuccess: () => void }) {
   const [mode, setMode] = useState<'choose' | 'approve' | 'reject'>('choose');
   const [adminNotes, setAdminNotes] = useState('');
