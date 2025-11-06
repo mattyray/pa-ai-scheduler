@@ -123,18 +123,18 @@ export default function SchedulePage() {
     
     try {
       let response;
-      const paFilter = user?.role === 'PA' ? `?pa_id=${user.id}` : '';
+      const paFilter = '';
       
       if (viewType === 'month') {
         const year = currentDate.getFullYear();
         const month = currentDate.getMonth() + 1;
-        response = await api.get(`/api/calendar/month/${year}/${month}/${paFilter}`);
+        response = await api.get(`/api/calendar/month/${year}/${month}${paFilter}`);
       } else if (viewType === 'week') {
         const { year, week } = getISOWeek(currentDate);
-        response = await api.get(`/api/calendar/week/${year}/${week}/${paFilter}`);
+        response = await api.get(`/api/calendar/week/${year}/${week}${paFilter}`);
       } else {
         const dateStr = currentDate.toISOString().split('T')[0];
-        response = await api.get(`/api/calendar/day/${dateStr}/${paFilter}`);
+        response = await api.get(`/api/calendar/day/${dateStr}${paFilter}`);
       }
       
       setCalendarData(response.data);

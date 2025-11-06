@@ -71,7 +71,6 @@ class SchedulePeriodViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Check coverage and gather warnings (but don't block)
         from apps.coverage.models import CriticalTimeCoverage
         from datetime import timedelta
         
@@ -90,11 +89,9 @@ class SchedulePeriodViewSet(viewsets.ModelViewSet):
             
             current_date += timedelta(days=1)
         
-        # Finalize regardless of coverage
         period.status = 'FINALIZED'
         period.save()
         
-        # Auto-reject all pending requests
         from apps.shifts.models import ShiftRequest
         pending = ShiftRequest.objects.filter(
             schedule_period=period,
@@ -106,14 +103,9 @@ class SchedulePeriodViewSet(viewsets.ModelViewSet):
             rejected_reason='Schedule period has been finalized'
         )
         
-        # Send finalized notification email to all PAs
         from apps.users.models import User
         pa_emails = list(User.objects.filter(role='PA', is_active=True).values_list('email', flat=True))
         
-        # TODO: Send finalized email (Phase 6.4)
-        # send_period_finalized_email.delay(period.id, pa_emails)
-        
-        # Broadcast WebSocket event
         from apps.schedules.websocket_utils import broadcast_period_finalized
         broadcast_period_finalized(period, message=f'{period.name} has been finalized')
         
@@ -123,7 +115,6 @@ class SchedulePeriodViewSet(viewsets.ModelViewSet):
             'rejected_requests': rejected_count,
         }
         
-        # Include coverage warnings if any exist
         if coverage_warnings:
             response_data['coverage_warnings'] = coverage_warnings
             response_data['warning_count'] = len(coverage_warnings)
@@ -131,6 +122,7 @@ class SchedulePeriodViewSet(viewsets.ModelViewSet):
             response_data['coverage_status'] = 'All critical times covered! ✅'
         
         return Response(response_data, status=status.HTTP_200_OK)
+
 
 class MonthViewAPI(APIView):
     """
@@ -155,22 +147,18 @@ class MonthViewAPI(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            # Get first and last day of month
             first_day = datetime(year, month, 1).date()
             last_day = datetime(year, month, monthrange(year, month)[1]).date()
             
-            # Get status filter (optional)
             status_filter = request.query_params.get('status')
             
             if status_filter:
-                # Filter by specific status if provided
                 shifts = ShiftRequest.objects.filter(
                     date__gte=first_day,
                     date__lte=last_day,
                     status=status_filter.upper()
                 )
             else:
-                # Default: show both APPROVED and PENDING
                 shifts = ShiftRequest.objects.filter(
                     date__gte=first_day,
                     date__lte=last_day,
@@ -179,17 +167,22 @@ class MonthViewAPI(APIView):
             
             shifts = shifts.select_related('requested_by', 'schedule_period').order_by('date', 'start_time')
             
-            # Optional: Filter by PA
+            # FIXED: Convert pa_id to integer
             pa_id = request.query_params.get('pa_id')
             if pa_id:
-                shifts = shifts.filter(requested_by_id=pa_id)
+                try:
+                    pa_id = int(pa_id)
+                    shifts = shifts.filter(requested_by_id=pa_id)
+                except (ValueError, TypeError):
+                    return Response(
+                        {'error': 'Invalid pa_id parameter'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
             
-            # Group shifts by week
             weeks = []
             current_date = first_day
             
-            # Start from Monday of the first week
-            while current_date.weekday() != 0:  # 0 = Monday
+            while current_date.weekday() != 0:
                 current_date -= timedelta(days=1)
             
             week_number = 1
@@ -197,18 +190,14 @@ class MonthViewAPI(APIView):
                 week_start = current_date
                 week_end = current_date + timedelta(days=6)
                 
-                # Get days in this week
                 days = []
                 for day_offset in range(7):
                     day_date = week_start + timedelta(days=day_offset)
                     
-                    # Get shifts for this day
                     day_shifts = [s for s in shifts if s.date == day_date]
                     
-                    # Get coverage info
                     coverage = self._get_day_coverage(day_date)
                     
-                    # Calculate total hours
                     total_hours = sum(s.duration_hours for s in day_shifts)
                     
                     days.append({
@@ -230,11 +219,9 @@ class MonthViewAPI(APIView):
                 current_date = week_end + timedelta(days=1)
                 week_number += 1
                 
-                # Stop after 6 weeks (max for any month view)
                 if week_number > 6:
                     break
             
-            # Calculate coverage stats
             coverage_stats = self._get_month_coverage_stats(first_day, last_day)
             
             response_data = {
@@ -311,88 +298,138 @@ class WeekViewAPI(APIView):
     """
     permission_classes = [permissions.IsAuthenticated]
     
-    def get(self, request, year, week):
-        """Get week view data with both approved and pending shifts"""
+    def get(self, request, year, month):
+        """Get month view data with both approved and pending shifts"""
         try:
             year = int(year)
-            week = int(week)
+            month = int(month)
             
-            if not (1 <= week <= 53):
+            if not (1 <= month <= 12):
                 return Response(
-                    {'error': 'Week must be between 1 and 53'},
+                    {'error': 'Month must be between 1 and 12'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            # Use ISO 8601 week calculation (matches frontend)
-            jan_4 = datetime(year, 1, 4).date()
-            week_1_monday = jan_4 - timedelta(days=jan_4.weekday())
-            week_start = week_1_monday + timedelta(weeks=week - 1)
-            week_end = week_start + timedelta(days=6)
+            first_day = datetime(year, month, 1).date()
+            last_day = datetime(year, month, monthrange(year, month)[1]).date()
             
-            # Get status filter (optional)
             status_filter = request.query_params.get('status')
             
             if status_filter:
-                # Filter by specific status if provided
                 shifts = ShiftRequest.objects.filter(
-                    date__gte=week_start,
-                    date__lte=week_end,
+                    date__gte=first_day,
+                    date__lte=last_day,
                     status=status_filter.upper()
                 )
             else:
-                # Default: show both APPROVED and PENDING
                 shifts = ShiftRequest.objects.filter(
-                    date__gte=week_start,
-                    date__lte=week_end,
+                    date__gte=first_day,
+                    date__lte=last_day,
                     status__in=['APPROVED', 'PENDING']
                 )
             
             shifts = shifts.select_related('requested_by', 'schedule_period').order_by('date', 'start_time')
             
-            # Optional: Filter by PA
-            pa_id = request.query_params.get('pa_id')
-            if pa_id:
-                shifts = shifts.filter(requested_by_id=pa_id)
+            # DEBUG LOGGING
+            print(f"🔍 MonthView Request:")
+            print(f"   User: {request.user.id} - {request.user.email} - Role: {request.user.role}")
+            print(f"   Date Range: {first_day} to {last_day}")
+            print(f"   Total shifts before PA filter: {shifts.count()}")
             
-            # Build days array
-            days = []
-            for day_offset in range(7):
-                day_date = week_start + timedelta(days=day_offset)
+            # FIXED: Convert pa_id to integer
+            pa_id = request.query_params.get('pa_id')
+            print(f"   pa_id param: {pa_id} (type: {type(pa_id)})")
+            
+            if pa_id:
+                try:
+                    pa_id = int(pa_id)
+                    print(f"   pa_id converted to int: {pa_id}")
+                    shifts = shifts.filter(requested_by_id=pa_id)
+                    print(f"   Shifts after PA filter: {shifts.count()}")
+                    
+                    # DEBUG: Show what shifts exist
+                    for shift in shifts[:5]:  # Show first 5
+                        print(f"   Shift: ID={shift.id}, Date={shift.date}, PA={shift.requested_by_id}, Status={shift.status}")
+                        
+                except (ValueError, TypeError) as e:
+                    print(f"   ERROR converting pa_id: {e}")
+                    return Response(
+                        {'error': 'Invalid pa_id parameter'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            
+            print(f"   Final shift count: {shifts.count()}")
+            
+            # Convert queryset to list for easier debugging
+            shifts_list = list(shifts)
+            print(f"   Shifts list length: {len(shifts_list)}")
+            
+            weeks = []
+            current_date = first_day
+            
+            while current_date.weekday() != 0:
+                current_date -= timedelta(days=1)
+            
+            week_number = 1
+            while current_date <= last_day or current_date.month == month:
+                week_start = current_date
+                week_end = current_date + timedelta(days=6)
                 
-                # Get shifts for this day
-                day_shifts = [s for s in shifts if s.date == day_date]
+                days = []
+                for day_offset in range(7):
+                    day_date = week_start + timedelta(days=day_offset)
+                    
+                    # Use the list instead of queryset
+                    day_shifts = [s for s in shifts_list if s.date == day_date]
+                    
+                    if day_shifts:
+                        print(f"   Day {day_date} has {len(day_shifts)} shifts")
+                    
+                    coverage = self._get_day_coverage(day_date)
+                    
+                    total_hours = sum(s.duration_hours for s in day_shifts)
+                    
+                    days.append({
+                        'date': day_date,
+                        'day_name': day_date.strftime('%A'),
+                        'shifts': CalendarShiftSerializer(day_shifts, many=True).data,
+                        'coverage': coverage,
+                        'total_hours': total_hours,
+                        'is_current_month': day_date.month == month
+                    })
                 
-                # Get coverage info
-                coverage = self._get_day_coverage(day_date)
-                
-                # Calculate total hours
-                total_hours = sum(s.duration_hours for s in day_shifts)
-                
-                days.append({
-                    'date': day_date.isoformat(),
-                    'day_name': day_date.strftime('%A'),
-                    'shifts': CalendarShiftSerializer(day_shifts, many=True).data,
-                    'coverage': coverage,
-                    'total_hours': float(total_hours)
+                weeks.append({
+                    'week_start': week_start,
+                    'week_end': week_end,
+                    'week_number': week_number,
+                    'days': days
                 })
+                
+                current_date = week_end + timedelta(days=1)
+                week_number += 1
+                
+                if week_number > 6:
+                    break
+            
+            coverage_stats = self._get_month_coverage_stats(first_day, last_day)
             
             response_data = {
-                'week_start': week_start.isoformat(),
-                'week_end': week_end.isoformat(),
-                'week_number': week,
                 'year': year,
-                'days': days,
-                'total_shifts': shifts.count()
+                'month': month,
+                'month_name': first_day.strftime('%B %Y'),
+                'weeks': weeks,
+                'total_shifts': len(shifts_list),
+                'coverage_stats': coverage_stats
             }
             
             return Response(response_data)
             
-        except ValueError:
+        except ValueError as e:
+            print(f"   ERROR: {e}")
             return Response(
-                {'error': 'Invalid year or week'},
+                {'error': 'Invalid year or month'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-    
     def _get_day_coverage(self, date):
         """Get coverage status for a specific day"""
         try:
@@ -441,17 +478,14 @@ class DayViewAPI(APIView):
         try:
             day_date = datetime.strptime(date, '%Y-%m-%d').date()
             
-            # Get status filter (optional)
             status_filter = request.query_params.get('status')
             
             if status_filter:
-                # Filter by specific status if provided
                 shifts = ShiftRequest.objects.filter(
                     date=day_date,
                     status=status_filter.upper()
                 )
             else:
-                # Default: show both APPROVED and PENDING
                 shifts = ShiftRequest.objects.filter(
                     date=day_date,
                     status__in=['APPROVED', 'PENDING']
@@ -459,12 +493,18 @@ class DayViewAPI(APIView):
             
             shifts = shifts.select_related('requested_by', 'schedule_period').order_by('start_time')
             
-            # Optional: Filter by PA
+            # FIXED: Convert pa_id to integer
             pa_id = request.query_params.get('pa_id')
             if pa_id:
-                shifts = shifts.filter(requested_by_id=pa_id)
+                try:
+                    pa_id = int(pa_id)
+                    shifts = shifts.filter(requested_by_id=pa_id)
+                except (ValueError, TypeError):
+                    return Response(
+                        {'error': 'Invalid pa_id parameter'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
             
-            # Get coverage info
             try:
                 coverage = CriticalTimeCoverage.objects.get(date=day_date)
                 coverage_data = {
@@ -483,10 +523,8 @@ class DayViewAPI(APIView):
                     'status': 'none'
                 }
             
-            # Calculate total hours
             total_hours = sum(s.duration_hours for s in shifts)
             
-            # Create hourly timeline
             timeline = []
             for hour in range(24):
                 hour_shifts = [
@@ -499,7 +537,7 @@ class DayViewAPI(APIView):
                     'hour': hour,
                     'hour_label': f'{hour:02d}:00',
                     'shifts': CalendarShiftSerializer(hour_shifts, many=True).data,
-                    'is_critical_time': (6 <= hour < 9) or (21 <= hour < 22)  # 6-9 AM or 9-10 PM
+                    'is_critical_time': (6 <= hour < 9) or (21 <= hour < 22)
                 })
             
             response_data = {
