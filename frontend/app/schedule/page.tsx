@@ -240,6 +240,15 @@ export default function SchedulePage() {
     setSuggestModalOpen(true);
   };
 
+  const handlePARequestClick = (date: string, startTime: string, endTime: string) => {
+    const params = new URLSearchParams({
+      date,
+      start_time: startTime,
+      end_time: endTime,
+    });
+    router.push(`/requests/new?${params.toString()}`);
+  };
+
   if (authLoading || !initialized) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -396,9 +405,24 @@ export default function SchedulePage() {
         ) : viewType === 'month' ? (
           <MonthView data={calendarData} onDayClick={handleMonthDayClick} onShiftClick={handleShiftClick} isAdmin={user?.role === 'ADMIN'} currentUserId={user?.id} />
         ) : viewType === 'week' ? (
-          <WeekView data={calendarData} onDayClick={handleWeekDayClick} onSuggestShift={openSuggestModal} onShiftClick={handleShiftClick} isAdmin={user?.role === 'ADMIN'} currentUserId={user?.id} />
+          <WeekView 
+            data={calendarData} 
+            onDayClick={handleWeekDayClick} 
+            onSuggestShift={openSuggestModal} 
+            onShiftClick={handleShiftClick}
+            onPARequest={handlePARequestClick}
+            isAdmin={user?.role === 'ADMIN'} 
+            currentUserId={user?.id} 
+          />
         ) : (
-          <DayView data={calendarData} onSuggestShift={openSuggestModal} onShiftClick={handleShiftClick} isAdmin={user?.role === 'ADMIN'} currentUserId={user?.id} />
+          <DayView 
+            data={calendarData} 
+            onSuggestShift={openSuggestModal} 
+            onShiftClick={handleShiftClick}
+            onPARequest={handlePARequestClick}
+            isAdmin={user?.role === 'ADMIN'} 
+            currentUserId={user?.id} 
+          />
         )}
       </div>
 
@@ -600,7 +624,23 @@ function MonthView({ data, onDayClick, onShiftClick, isAdmin, currentUserId }: {
   );
 }
 
-function WeekView({ data, onDayClick, onSuggestShift, onShiftClick, isAdmin, currentUserId }: { data: any; onDayClick: (date: string) => void; onSuggestShift: (date: string, startTime?: string, endTime?: string) => void; onShiftClick: (shift: any) => void; isAdmin?: boolean; currentUserId?: number }) {
+function WeekView({ 
+  data, 
+  onDayClick, 
+  onSuggestShift, 
+  onShiftClick,
+  onPARequest,
+  isAdmin, 
+  currentUserId 
+}: { 
+  data: any; 
+  onDayClick: (date: string) => void; 
+  onSuggestShift: (date: string, startTime?: string, endTime?: string) => void; 
+  onShiftClick: (shift: any) => void;
+  onPARequest: (date: string, startTime: string, endTime: string) => void;
+  isAdmin?: boolean; 
+  currentUserId?: number 
+}) {
   const hours = Array.from({ length: 24 }, (_, i) => i);
   const days = data.days || [];
 
@@ -612,13 +652,15 @@ function WeekView({ data, onDayClick, onSuggestShift, onShiftClick, isAdmin, cur
   };
 
   const handleCellClick = (date: string, hour: number) => {
-    if (!isAdmin) return;
-    
     const startTime = `${hour.toString().padStart(2, '0')}:00`;
     const endHour = hour + 3;
     const endTime = `${endHour.toString().padStart(2, '0')}:00`;
     
-    onSuggestShift(date, startTime, endTime);
+    if (isAdmin) {
+      onSuggestShift(date, startTime, endTime);
+    } else {
+      onPARequest(date, startTime, endTime);
+    }
   };
 
   return (
@@ -673,9 +715,9 @@ function WeekView({ data, onDayClick, onSuggestShift, onShiftClick, isAdmin, cur
                 return (
                   <div 
                     key={`${day.date}-${hour}`} 
-                    className={`relative p-1 min-h-[3rem] ${isAdmin && !hasShift ? 'cursor-pointer hover:bg-blue-50 transition-colors' : ''}`}
+                    className={`relative p-1 min-h-[3rem] ${!hasShift ? 'cursor-pointer hover:bg-blue-50 transition-colors' : ''}`}
                     onClick={() => !hasShift && handleCellClick(day.date, hour)}
-                    title={isAdmin && !hasShift ? 'Click to suggest shift' : ''}
+                    title={!hasShift ? (isAdmin ? 'Click to suggest shift' : 'Click to request shift') : ''}
                   >
                     {shiftsStartingThisHour.map((shift: any) => {
                       const paName = shift.requested_by_name || shift.requested_by || 'Unknown';
@@ -733,17 +775,32 @@ function WeekView({ data, onDayClick, onSuggestShift, onShiftClick, isAdmin, cur
         })}
       </div>
 
-      {isAdmin && (
-        <div className="border-t border-gray-200 bg-blue-50 px-4 py-3">
-          <p className="text-sm text-blue-800">
-            💡 <strong>Tip:</strong> Click on any empty time slot to suggest a shift for that time
-          </p>
-        </div>
-      )}
+      <div className="border-t border-gray-200 bg-blue-50 px-4 py-3">
+        <p className="text-sm text-blue-800">
+          💡 <strong>Tip:</strong> {isAdmin 
+            ? 'Click on any empty time slot to suggest a shift for that time' 
+            : 'Click on any empty time slot to request a shift for that time'}
+        </p>
+      </div>
     </div>
   );
 }
-function DayView({ data, onSuggestShift, onShiftClick, isAdmin, currentUserId }: { data: any; onSuggestShift: (date: string, startTime?: string, endTime?: string) => void; onShiftClick: (shift: any) => void; isAdmin?: boolean; currentUserId?: number }) {
+
+function DayView({ 
+  data, 
+  onSuggestShift, 
+  onShiftClick,
+  onPARequest,
+  isAdmin, 
+  currentUserId 
+}: { 
+  data: any; 
+  onSuggestShift: (date: string, startTime?: string, endTime?: string) => void; 
+  onShiftClick: (shift: any) => void;
+  onPARequest: (date: string, startTime: string, endTime: string) => void;
+  isAdmin?: boolean; 
+  currentUserId?: number 
+}) {
   const hours = Array.from({ length: 24 }, (_, i) => i);
   const shifts = data.shifts || [];
 
@@ -765,8 +822,6 @@ function DayView({ data, onSuggestShift, onShiftClick, isAdmin, currentUserId }:
   };
 
   const handleCellClick = (hour: number) => {
-    if (!isAdmin) return;
-    
     const coveringShifts = getShiftsCoveringHour(hour);
     if (coveringShifts.length > 0) {
       const shift = coveringShifts[0];
@@ -779,13 +834,18 @@ function DayView({ data, onSuggestShift, onShiftClick, isAdmin, currentUserId }:
     const startTime = `${hour.toString().padStart(2, '0')}:00`;
     const endHour = hour + 3;
     const endTime = `${endHour.toString().padStart(2, '0')}:00`;
-    onSuggestShift(data.date, startTime, endTime);
+    
+    if (isAdmin) {
+      onSuggestShift(data.date, startTime, endTime);
+    } else {
+      onPARequest(data.date, startTime, endTime);
+    }
   };
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
       <div className="border-b border-gray-200 bg-gray-50 p-4">
-        <h3 className="text-lg font-semibold text-gray-900">{data.date_formatted}</h3>
+        <h3 className="text-lg font-semibold text-gray-900">{data.day_name}</h3>
         <p className="text-sm text-gray-600 mt-1">
           {shifts.length} shift{shifts.length !== 1 ? 's' : ''} scheduled
         </p>
@@ -815,18 +875,18 @@ function DayView({ data, onSuggestShift, onShiftClick, isAdmin, currentUserId }:
 
               <div 
                 className={`relative p-2 min-h-[3rem] flex-1 ${
-                  isAdmin && hasShiftCoverage && isShiftClickable(shiftsCoveringThisHour[0])
+                  hasShiftCoverage && isShiftClickable(shiftsCoveringThisHour[0])
                     ? 'cursor-pointer hover:bg-blue-50/50 transition-colors'
-                    : isAdmin && !hasShiftCoverage
+                    : !hasShiftCoverage
                     ? 'cursor-pointer hover:bg-blue-50 transition-colors'
                     : ''
                 }`}
                 onClick={() => handleCellClick(hour)}
                 title={
-                  isAdmin && hasShiftCoverage && isShiftClickable(shiftsCoveringThisHour[0])
+                  hasShiftCoverage && isShiftClickable(shiftsCoveringThisHour[0])
                     ? 'Click to manage shift'
-                    : isAdmin && !hasShiftCoverage
-                    ? 'Click to suggest shift'
+                    : !hasShiftCoverage
+                    ? (isAdmin ? 'Click to suggest shift' : 'Click to request shift')
                     : ''
                 }
               >
@@ -886,13 +946,13 @@ function DayView({ data, onSuggestShift, onShiftClick, isAdmin, currentUserId }:
         })}
       </div>
 
-      {isAdmin && (
-        <div className="border-t border-gray-200 bg-blue-50 px-4 py-3">
-          <p className="text-sm text-blue-800">
-            💡 <strong>Tip:</strong> Click on any empty time slot to suggest a shift, or click on a shift to manage it
-          </p>
-        </div>
-      )}
+      <div className="border-t border-gray-200 bg-blue-50 px-4 py-3">
+        <p className="text-sm text-blue-800">
+          💡 <strong>Tip:</strong> {isAdmin
+            ? 'Click on any empty time slot to suggest a shift, or click on a shift to manage it'
+            : 'Click on any empty time slot to request a shift, or click on your shifts to cancel them'}
+        </p>
+      </div>
     </div>
   );
 }
