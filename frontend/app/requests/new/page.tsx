@@ -74,7 +74,7 @@ export default function NewShiftRequestPage() {
     console.log('📤 Sending shift request:', requestData);
 
     try {
-      const response = await shiftsAPI.createShiftRequest(requestData);
+      const response = await shiftsAPI.createRequest(requestData);
       console.log('✅ Success:', response.data);
       
       setSuccess(true);

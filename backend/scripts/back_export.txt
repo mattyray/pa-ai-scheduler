@@ -1,6 +1,6 @@
 # TOTETAXI - BACKEND CODE SNAPSHOT
 # AUTO-GENERATED - CODE FILES ONLY
-# Created: 2025-11-06 10:11:48
+# Created: 2025-11-07 12:33:26
 # Total files: 88
 # 🔒 SECURITY: .env files excluded (contain secrets)
 # 📋 INCLUDES: All Django apps, migrations, configuration
@@ -2518,7 +2518,6 @@ class SchedulePeriodViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Check coverage and gather warnings (but don't block)
         from apps.coverage.models import CriticalTimeCoverage
         from datetime import timedelta
         
@@ -2537,11 +2536,9 @@ class SchedulePeriodViewSet(viewsets.ModelViewSet):
             
             current_date += timedelta(days=1)
         
-        # Finalize regardless of coverage
         period.status = 'FINALIZED'
         period.save()
         
-        # Auto-reject all pending requests
         from apps.shifts.models import ShiftRequest
         pending = ShiftRequest.objects.filter(
             schedule_period=period,
@@ -2553,14 +2550,9 @@ class SchedulePeriodViewSet(viewsets.ModelViewSet):
             rejected_reason='Schedule period has been finalized'
         )
         
-        # Send finalized notification email to all PAs
         from apps.users.models import User
         pa_emails = list(User.objects.filter(role='PA', is_active=True).values_list('email', flat=True))
         
-        # TODO: Send finalized email (Phase 6.4)
-        # send_period_finalized_email.delay(period.id, pa_emails)
-        
-        # Broadcast WebSocket event
         from apps.schedules.websocket_utils import broadcast_period_finalized
         broadcast_period_finalized(period, message=f'{period.name} has been finalized')
         
@@ -2570,7 +2562,6 @@ class SchedulePeriodViewSet(viewsets.ModelViewSet):
             'rejected_requests': rejected_count,
         }
         
-        # Include coverage warnings if any exist
         if coverage_warnings:
             response_data['coverage_warnings'] = coverage_warnings
             response_data['warning_count'] = len(coverage_warnings)
@@ -2578,6 +2569,7 @@ class SchedulePeriodViewSet(viewsets.ModelViewSet):
             response_data['coverage_status'] = 'All critical times covered! ✅'
         
         return Response(response_data, status=status.HTTP_200_OK)
+
 
 class MonthViewAPI(APIView):
     """
@@ -2602,22 +2594,18 @@ class MonthViewAPI(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            # Get first and last day of month
             first_day = datetime(year, month, 1).date()
             last_day = datetime(year, month, monthrange(year, month)[1]).date()
             
-            # Get status filter (optional)
             status_filter = request.query_params.get('status')
             
             if status_filter:
-                # Filter by specific status if provided
                 shifts = ShiftRequest.objects.filter(
                     date__gte=first_day,
                     date__lte=last_day,
                     status=status_filter.upper()
                 )
             else:
-                # Default: show both APPROVED and PENDING
                 shifts = ShiftRequest.objects.filter(
                     date__gte=first_day,
                     date__lte=last_day,
@@ -2626,17 +2614,22 @@ class MonthViewAPI(APIView):
             
             shifts = shifts.select_related('requested_by', 'schedule_period').order_by('date', 'start_time')
             
-            # Optional: Filter by PA
+            # FIXED: Convert pa_id to integer
             pa_id = request.query_params.get('pa_id')
             if pa_id:
-                shifts = shifts.filter(requested_by_id=pa_id)
+                try:
+                    pa_id = int(pa_id)
+                    shifts = shifts.filter(requested_by_id=pa_id)
+                except (ValueError, TypeError):
+                    return Response(
+                        {'error': 'Invalid pa_id parameter'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
             
-            # Group shifts by week
             weeks = []
             current_date = first_day
             
-            # Start from Monday of the first week
-            while current_date.weekday() != 0:  # 0 = Monday
+            while current_date.weekday() != 0:
                 current_date -= timedelta(days=1)
             
             week_number = 1
@@ -2644,18 +2637,14 @@ class MonthViewAPI(APIView):
                 week_start = current_date
                 week_end = current_date + timedelta(days=6)
                 
-                # Get days in this week
                 days = []
                 for day_offset in range(7):
                     day_date = week_start + timedelta(days=day_offset)
                     
-                    # Get shifts for this day
                     day_shifts = [s for s in shifts if s.date == day_date]
                     
-                    # Get coverage info
                     coverage = self._get_day_coverage(day_date)
                     
-                    # Calculate total hours
                     total_hours = sum(s.duration_hours for s in day_shifts)
                     
                     days.append({
@@ -2677,11 +2666,9 @@ class MonthViewAPI(APIView):
                 current_date = week_end + timedelta(days=1)
                 week_number += 1
                 
-                # Stop after 6 weeks (max for any month view)
                 if week_number > 6:
                     break
             
-            # Calculate coverage stats
             coverage_stats = self._get_month_coverage_stats(first_day, last_day)
             
             response_data = {
@@ -2746,7 +2733,6 @@ class MonthViewAPI(APIView):
             'coverage_percentage': round((fully_covered / total_days * 100), 1) if total_days > 0 else 0
         }
 
-
 class WeekViewAPI(APIView):
     """
     GET /api/calendar/week/{year}/{week}/
@@ -2770,24 +2756,20 @@ class WeekViewAPI(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            # Use ISO 8601 week calculation (matches frontend)
             jan_4 = datetime(year, 1, 4).date()
             week_1_monday = jan_4 - timedelta(days=jan_4.weekday())
             week_start = week_1_monday + timedelta(weeks=week - 1)
             week_end = week_start + timedelta(days=6)
             
-            # Get status filter (optional)
             status_filter = request.query_params.get('status')
             
             if status_filter:
-                # Filter by specific status if provided
                 shifts = ShiftRequest.objects.filter(
                     date__gte=week_start,
                     date__lte=week_end,
                     status=status_filter.upper()
                 )
             else:
-                # Default: show both APPROVED and PENDING
                 shifts = ShiftRequest.objects.filter(
                     date__gte=week_start,
                     date__lte=week_end,
@@ -2796,23 +2778,25 @@ class WeekViewAPI(APIView):
             
             shifts = shifts.select_related('requested_by', 'schedule_period').order_by('date', 'start_time')
             
-            # Optional: Filter by PA
             pa_id = request.query_params.get('pa_id')
             if pa_id:
-                shifts = shifts.filter(requested_by_id=pa_id)
+                try:
+                    pa_id = int(pa_id)
+                    shifts = shifts.filter(requested_by_id=pa_id)
+                except (ValueError, TypeError):
+                    return Response(
+                        {'error': 'Invalid pa_id parameter'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
             
-            # Build days array
             days = []
             for day_offset in range(7):
                 day_date = week_start + timedelta(days=day_offset)
                 
-                # Get shifts for this day
                 day_shifts = [s for s in shifts if s.date == day_date]
                 
-                # Get coverage info
                 coverage = self._get_day_coverage(day_date)
                 
-                # Calculate total hours
                 total_hours = sum(s.duration_hours for s in day_shifts)
                 
                 days.append({
@@ -2855,20 +2839,6 @@ class WeekViewAPI(APIView):
                 'evening_covered': False,
                 'status': 'none'
             }
-    
-    def _group_shifts_by_hour(self, shifts):
-        """Group shifts by hour for timeline display"""
-        hourly = {}
-        for hour in range(24):
-            hourly[f'{hour:02d}:00'] = []
-        
-        for shift in shifts:
-            start_hour = shift.start_time.hour
-            hourly[f'{start_hour:02d}:00'].append(
-                CalendarShiftSerializer(shift).data
-            )
-        
-        return hourly
 
 
 class DayViewAPI(APIView):
@@ -2888,17 +2858,14 @@ class DayViewAPI(APIView):
         try:
             day_date = datetime.strptime(date, '%Y-%m-%d').date()
             
-            # Get status filter (optional)
             status_filter = request.query_params.get('status')
             
             if status_filter:
-                # Filter by specific status if provided
                 shifts = ShiftRequest.objects.filter(
                     date=day_date,
                     status=status_filter.upper()
                 )
             else:
-                # Default: show both APPROVED and PENDING
                 shifts = ShiftRequest.objects.filter(
                     date=day_date,
                     status__in=['APPROVED', 'PENDING']
@@ -2906,12 +2873,18 @@ class DayViewAPI(APIView):
             
             shifts = shifts.select_related('requested_by', 'schedule_period').order_by('start_time')
             
-            # Optional: Filter by PA
+            # FIXED: Convert pa_id to integer
             pa_id = request.query_params.get('pa_id')
             if pa_id:
-                shifts = shifts.filter(requested_by_id=pa_id)
+                try:
+                    pa_id = int(pa_id)
+                    shifts = shifts.filter(requested_by_id=pa_id)
+                except (ValueError, TypeError):
+                    return Response(
+                        {'error': 'Invalid pa_id parameter'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
             
-            # Get coverage info
             try:
                 coverage = CriticalTimeCoverage.objects.get(date=day_date)
                 coverage_data = {
@@ -2930,10 +2903,8 @@ class DayViewAPI(APIView):
                     'status': 'none'
                 }
             
-            # Calculate total hours
             total_hours = sum(s.duration_hours for s in shifts)
             
-            # Create hourly timeline
             timeline = []
             for hour in range(24):
                 hour_shifts = [
@@ -2946,7 +2917,7 @@ class DayViewAPI(APIView):
                     'hour': hour,
                     'hour_label': f'{hour:02d}:00',
                     'shifts': CalendarShiftSerializer(hour_shifts, many=True).data,
-                    'is_critical_time': (6 <= hour < 9) or (21 <= hour < 22)  # 6-9 AM or 9-10 PM
+                    'is_critical_time': (6 <= hour < 9) or (21 <= hour < 22)
                 })
             
             response_data = {
