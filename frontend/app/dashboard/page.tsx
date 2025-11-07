@@ -5,7 +5,15 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { suggestionsAPI, ShiftSuggestion } from '@/lib/suggestions-api';
 import { shiftsAPI } from '@/lib/shifts-api';
+import { schedulesAPI } from '@/lib/schedules-api';
 import { getPAColor } from '@/lib/pa-colors';
+
+interface PAStats {
+  upcoming_shifts: number;
+  hours_this_week: number;
+  pending_requests: number;
+  hours_this_month: number;
+}
 
 export default function PADashboard() {
   const router = useRouter();
@@ -13,6 +21,14 @@ export default function PADashboard() {
   
   const [suggestions, setSuggestions] = useState<ShiftSuggestion[]>([]);
   const [recentRequests, setRecentRequests] = useState<any[]>([]);
+  const [stats, setStats] = useState<PAStats>({
+    upcoming_shifts: 0,
+    hours_this_week: 0,
+    pending_requests: 0,
+    hours_this_month: 0,
+  });
+  const [calendarData, setCalendarData] = useState<any>(null);
+  const [currentMonth, setCurrentMonth] = useState(new Date());
   const [dataLoading, setDataLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<number | null>(null);
   const [showDeclineModal, setShowDeclineModal] = useState(false);
@@ -29,7 +45,7 @@ export default function PADashboard() {
     if (user && user.role === 'PA') {
       loadDashboardData();
     }
-  }, [user]);
+  }, [user, currentMonth]);
 
   const loadDashboardData = async () => {
     try {
@@ -47,13 +63,60 @@ export default function PADashboard() {
       setSuggestions(pendingSuggestions);
       
       const allRequests = requestsRes.data.results || requestsRes.data;
-      setRecentRequests(Array.isArray(allRequests) ? allRequests.slice(0, 5) : []);
+      const requestsArray = Array.isArray(allRequests) ? allRequests : [];
+      setRecentRequests(requestsArray.slice(0, 5));
+      
+      const monthData = await schedulesAPI.getMonthView(
+        currentMonth.getFullYear(),
+        currentMonth.getMonth() + 1
+      );
+      setCalendarData(monthData.data);
+      
+      calculateStats(requestsArray);
       
     } catch (err) {
       console.error('Failed to load dashboard data:', err);
     } finally {
       setDataLoading(false);
     }
+  };
+
+  const calculateStats = (requests: any[]) => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    const startOfWeek = new Date(today);
+    startOfWeek.setDate(today.getDate() - today.getDay());
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 6);
+    
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    
+    const approved = requests.filter(r => r.status === 'APPROVED');
+    const pending = requests.filter(r => r.status === 'PENDING');
+    
+    const upcomingShifts = approved.filter(r => new Date(r.date) >= today);
+    
+    const thisWeekShifts = approved.filter(r => {
+      const shiftDate = new Date(r.date);
+      return shiftDate >= startOfWeek && shiftDate <= endOfWeek;
+    });
+    
+    const thisMonthShifts = approved.filter(r => {
+      const shiftDate = new Date(r.date);
+      return shiftDate >= startOfMonth && shiftDate <= endOfMonth;
+    });
+    
+    const hoursThisWeek = thisWeekShifts.reduce((sum, r) => sum + (r.duration_hours || 0), 0);
+    const hoursThisMonth = thisMonthShifts.reduce((sum, r) => sum + (r.duration_hours || 0), 0);
+    
+    setStats({
+      upcoming_shifts: upcomingShifts.length,
+      hours_this_week: hoursThisWeek,
+      pending_requests: pending.length,
+      hours_this_month: hoursThisMonth,
+    });
   };
 
   const handleAcceptSuggestion = async (suggestionId: number) => {
@@ -92,17 +155,40 @@ export default function PADashboard() {
     setShowDeclineModal(true);
   };
 
+  const handleDayClick = (date: string) => {
+    router.push(`/schedule?view=week&date=${date}`);
+  };
+
+  const goToPreviousMonth = () => {
+    const newDate = new Date(currentMonth);
+    newDate.setMonth(newDate.getMonth() - 1);
+    setCurrentMonth(newDate);
+  };
+
+  const goToNextMonth = () => {
+    const newDate = new Date(currentMonth);
+    newDate.setMonth(newDate.getMonth() + 1);
+    setCurrentMonth(newDate);
+  };
+
+  const goToToday = () => {
+    setCurrentMonth(new Date());
+  };
+
   if (loading || dataLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p>Loading...</p>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-blue-600 border-r-transparent"></div>
+          <p className="mt-2 text-gray-600">Loading dashboard...</p>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow-sm">
+      <nav className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center">
@@ -114,7 +200,7 @@ export default function PADashboard() {
               </span>
               <button
                 onClick={logout}
-                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700"
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 transition"
               >
                 Logout
               </button>
@@ -123,194 +209,306 @@ export default function PADashboard() {
         </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="px-4 sm:px-0">
-          
-          <div className="mb-6">
-            <div className="bg-white overflow-hidden shadow rounded-lg">
-              <div className="px-4 py-5 sm:p-6">
-                <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                  Welcome, {user?.first_name}!
-                </h2>
-                <p className="text-gray-600">
-                  Personal Assistant Dashboard - View your approved and pending shifts on the calendar
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {suggestions.length > 0 && (
-            <div className="mb-6">
-              <div className="bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-200 rounded-lg p-6">
-                <div className="flex items-center mb-4">
-                  <span className="text-2xl mr-2">🔔</span>
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    Shift Suggestions ({suggestions.length})
-                  </h3>
-                </div>
-                
-                <div className="space-y-3">
-                  {suggestions.map((suggestion) => (
-                    <div
-                      key={suggestion.id}
-                      className="bg-white rounded-lg p-4 shadow"
-                    >
-                      <div className="flex justify-between items-start mb-3">
-                        <div>
-                          <p className="text-sm font-semibold text-gray-900">
-                            {new Date(suggestion.date).toLocaleDateString('en-US', { 
-                              weekday: 'long',
-                              month: 'long',
-                              day: 'numeric',
-                              year: 'numeric'
-                            })}
-                          </p>
-                          <p className="text-sm text-gray-600">
-                            {formatTime12Hour(suggestion.start_time)} - {formatTime12Hour(suggestion.end_time)} 
-                            <span className="text-gray-500"> ({suggestion.duration_hours} hours)</span>
-                          </p>
-                          <p className="text-xs text-gray-500 mt-1">
-                            Suggested by: {suggestion.suggested_by_name}
-                          </p>
-                        </div>
-                      </div>
-                      
-                      {suggestion.message && (
-                        <div className="mb-3 p-2 bg-gray-50 rounded text-sm text-gray-700 italic">
-                          "{suggestion.message}"
-                        </div>
-                      )}
-                      
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={() => handleAcceptSuggestion(suggestion.id)}
-                          disabled={actionLoading === suggestion.id}
-                          className="flex-1 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded hover:bg-green-700 disabled:opacity-50"
-                        >
-                          {actionLoading === suggestion.id ? 'Processing...' : '✓ Accept'}
-                        </button>
-                        <button
-                          onClick={() => openDeclineModal(suggestion)}
-                          disabled={actionLoading === suggestion.id}
-                          className="flex-1 px-4 py-2 bg-red-600 text-white text-sm font-medium rounded hover:bg-red-700 disabled:opacity-50"
-                        >
-                          ✗ Decline
-                        </button>
-                      </div>
-                      
-                      <p className="text-xs text-gray-500 mt-2">
-                        Note: Accepting creates a shift request that still needs admin approval
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 mb-6">
-            <button
-              onClick={() => router.push('/requests/new')}
-              className="bg-white overflow-hidden shadow rounded-lg hover:shadow-md transition-shadow"
-            >
-              <div className="px-4 py-5 sm:p-6">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0 bg-blue-500 rounded-md p-3">
-                    <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                    </svg>
-                  </div>
-                  <div className="ml-5 text-left">
-                    <h4 className="text-lg font-medium text-gray-900">Request Shift</h4>
-                    <p className="text-sm text-gray-500">Submit new request</p>
-                  </div>
-                </div>
-              </div>
-            </button>
-
-            <button
-              onClick={() => router.push('/requests')}
-              className="bg-white overflow-hidden shadow rounded-lg hover:shadow-md transition-shadow"
-            >
-              <div className="px-4 py-5 sm:p-6">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0 bg-purple-500 rounded-md p-3">
-                    <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                    </svg>
-                  </div>
-                  <div className="ml-5 text-left">
-                    <h4 className="text-lg font-medium text-gray-900">My Requests</h4>
-                    <p className="text-sm text-gray-500">View all requests</p>
-                  </div>
-                </div>
-              </div>
-            </button>
-
-            <button
-              onClick={() => router.push('/schedule')}
-              className="bg-white overflow-hidden shadow rounded-lg hover:shadow-md transition-shadow"
-            >
-              <div className="px-4 py-5 sm:p-6">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0 bg-green-500 rounded-md p-3">
-                    <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                  <div className="ml-5 text-left">
-                    <h4 className="text-lg font-medium text-gray-900">View Schedule</h4>
-                    <p className="text-sm text-gray-500">See approved & pending shifts</p>
-                  </div>
-                </div>
-              </div>
-            </button>
-          </div>
-
-          <div className="bg-white shadow overflow-hidden rounded-lg">
+      <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+        
+        <div className="mb-6">
+          <div className="bg-white overflow-hidden shadow rounded-lg border border-gray-200">
             <div className="px-4 py-5 sm:p-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Recent Requests</h3>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">
+                Welcome, {user?.first_name}!
+              </h2>
+              <p className="text-gray-600">
+                Personal Assistant Dashboard - View your approved and pending shifts
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 mb-8 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="bg-white rounded-lg shadow p-6 border border-gray-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Upcoming Shifts</p>
+                <p className="mt-2 text-3xl font-bold text-blue-600">{stats.upcoming_shifts}</p>
+              </div>
+              <div className="p-3 bg-blue-100 rounded-lg">
+                <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow p-6 border border-gray-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Hours This Week</p>
+                <p className="mt-2 text-3xl font-bold text-green-600">{stats.hours_this_week.toFixed(1)}</p>
+              </div>
+              <div className="p-3 bg-green-100 rounded-lg">
+                <svg className="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow p-6 border border-gray-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Pending Requests</p>
+                <p className="mt-2 text-3xl font-bold text-yellow-600">{stats.pending_requests}</p>
+              </div>
+              <div className="p-3 bg-yellow-100 rounded-lg">
+                <svg className="w-6 h-6 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow p-6 border border-gray-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">This Month Hours</p>
+                <p className="mt-2 text-3xl font-bold text-purple-600">{stats.hours_this_month.toFixed(1)}</p>
+              </div>
+              <div className="p-3 bg-purple-100 rounded-lg">
+                <svg className="w-6 h-6 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+          
+          <div className="lg:col-span-2 bg-white rounded-lg shadow border border-gray-200">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-gray-900">
+                  {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                </h2>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={goToPreviousMonth}
+                    className="p-2 hover:bg-gray-100 rounded-md transition"
+                  >
+                    <svg className="h-5 w-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={goToToday}
+                    className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition"
+                  >
+                    Today
+                  </button>
+                  <button
+                    onClick={goToNextMonth}
+                    className="p-2 hover:bg-gray-100 rounded-md transition"
+                  >
+                    <svg className="h-5 w-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-6">
+              <PACalendar 
+                data={calendarData} 
+                onDayClick={handleDayClick}
+                userId={user?.id}
+              />
+              <p className="mt-4 text-xs text-gray-500 text-center">
+                Click any day to view that week's schedule
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow border border-gray-200">
+            <div className="p-6 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">Recent Requests</h3>
+            </div>
+            <div className="p-6">
               {recentRequests.length === 0 ? (
-                <p className="text-gray-500 text-center py-8">No requests yet</p>
+                <div className="text-center py-8">
+                  <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                  <p className="mt-2 text-sm text-gray-500">No requests yet</p>
+                </div>
               ) : (
                 <div className="space-y-3">
                   {recentRequests.map((request) => (
                     <div
                       key={request.id}
-                      className="flex items-center justify-between p-3 border rounded-lg"
-                      style={{
+                      className="p-3 rounded-lg border-l-4"
+                      style={{ 
                         backgroundColor: getPAColor(request.requested_by) + '10',
-                        borderColor: getPAColor(request.requested_by) + '40',
+                        borderLeftColor: getPAColor(request.requested_by)
                       }}
                     >
-                      <div>
-                        <p className="text-sm font-semibold text-gray-900">
-                          {new Date(request.date).toLocaleDateString('en-US', { 
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric'
-                          })}
-                        </p>
-                        <p className="text-xs text-gray-600">
-                          {formatTime12Hour(request.start_time)} - {formatTime12Hour(request.end_time)}
-                        </p>
+                      <p className="text-sm font-semibold text-gray-900">
+                        {new Date(request.date).toLocaleDateString('en-US', { 
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric'
+                        })}
+                      </p>
+                      <p className="text-xs text-gray-600 mt-1">
+                        {formatTime12Hour(request.start_time)} - {formatTime12Hour(request.end_time)}
+                      </p>
+                      <div className="flex items-center justify-between mt-2">
+                        <span className="text-xs text-gray-500">{request.duration_hours}h</span>
+                        <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${
+                          request.status === 'APPROVED' ? 'bg-green-100 text-green-800' :
+                          request.status === 'REJECTED' ? 'bg-red-100 text-red-800' :
+                          request.status === 'PENDING' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          {request.status}
+                        </span>
                       </div>
-                      <span className={`px-3 py-1 text-xs font-semibold rounded-full ${
-                        request.status === 'APPROVED' ? 'bg-green-100 text-green-800' :
-                        request.status === 'REJECTED' ? 'bg-red-100 text-red-800' :
-                        request.status === 'PENDING' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-gray-100 text-gray-800'
-                      }`}>
-                        {request.status}
-                      </span>
                     </div>
                   ))}
                 </div>
               )}
             </div>
           </div>
-
         </div>
+
+        {suggestions.length > 0 && (
+          <div className="mb-6">
+            <div className="bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-200 rounded-lg p-6">
+              <div className="flex items-center mb-4">
+                <span className="text-2xl mr-2">🔔</span>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Shift Suggestions ({suggestions.length})
+                </h3>
+              </div>
+              
+              <div className="space-y-3">
+                {suggestions.map((suggestion) => (
+                  <div
+                    key={suggestion.id}
+                    className="bg-white rounded-lg p-4 shadow"
+                  >
+                    <div className="flex justify-between items-start mb-3">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">
+                          {new Date(suggestion.date).toLocaleDateString('en-US', { 
+                            weekday: 'long',
+                            month: 'long',
+                            day: 'numeric',
+                            year: 'numeric'
+                          })}
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          {formatTime12Hour(suggestion.start_time)} - {formatTime12Hour(suggestion.end_time)} 
+                          <span className="text-gray-500"> ({suggestion.duration_hours} hours)</span>
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Suggested by: {suggestion.suggested_by_name}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    {suggestion.message && (
+                      <div className="mb-3 p-2 bg-gray-50 rounded text-sm text-gray-700 italic">
+                        "{suggestion.message}"
+                      </div>
+                    )}
+                    
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => handleAcceptSuggestion(suggestion.id)}
+                        disabled={actionLoading === suggestion.id}
+                        className="flex-1 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded hover:bg-green-700 disabled:opacity-50"
+                      >
+                        ✓ Accept
+                      </button>
+                      <button
+                        onClick={() => openDeclineModal(suggestion)}
+                        disabled={actionLoading === suggestion.id}
+                        className="flex-1 px-4 py-2 bg-red-600 text-white text-sm font-medium rounded hover:bg-red-700 disabled:opacity-50"
+                      >
+                        ✗ Decline
+                      </button>
+                    </div>
+                    
+                    <p className="text-xs text-gray-500 mt-2">
+                      Note: Accepting creates a shift request that still needs admin approval
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 mb-6">
+          <button
+            onClick={() => router.push('/requests/new')}
+            className="bg-white overflow-hidden shadow rounded-lg hover:shadow-md transition-shadow border border-gray-200"
+          >
+            <div className="px-4 py-5 sm:p-6">
+              <div className="flex items-center">
+                <div className="flex-shrink-0 bg-blue-500 rounded-md p-3">
+                  <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                </div>
+                <div className="ml-5 text-left">
+                  <h4 className="text-lg font-medium text-gray-900">Request Shift</h4>
+                  <p className="text-sm text-gray-500">Submit new request</p>
+                </div>
+              </div>
+            </div>
+          </button>
+
+          <button
+            onClick={() => router.push('/requests')}
+            className="bg-white overflow-hidden shadow rounded-lg hover:shadow-md transition-shadow border border-gray-200"
+          >
+            <div className="px-4 py-5 sm:p-6">
+              <div className="flex items-center">
+                <div className="flex-shrink-0 bg-purple-500 rounded-md p-3">
+                  <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                </div>
+                <div className="ml-5 text-left">
+                  <h4 className="text-lg font-medium text-gray-900">My Requests</h4>
+                  <p className="text-sm text-gray-500">View all requests</p>
+                </div>
+              </div>
+            </div>
+          </button>
+
+          <button
+            onClick={() => router.push('/schedule')}
+            className="bg-white overflow-hidden shadow rounded-lg hover:shadow-md transition-shadow border border-gray-200"
+          >
+            <div className="px-4 py-5 sm:p-6">
+              <div className="flex items-center">
+                <div className="flex-shrink-0 bg-green-500 rounded-md p-3">
+                  <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <div className="ml-5 text-left">
+                  <h4 className="text-lg font-medium text-gray-900">View Schedule</h4>
+                  <p className="text-sm text-gray-500">See approved & pending shifts</p>
+                </div>
+              </div>
+            </div>
+          </button>
+        </div>
+
       </main>
 
       {showDeclineModal && (
@@ -318,7 +516,7 @@ export default function PADashboard() {
           <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
             <div className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={() => setShowDeclineModal(false)} />
 
-            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full relative z-10">
               <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Decline Shift Suggestion</h3>
                 
@@ -358,6 +556,98 @@ export default function PADashboard() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function PACalendar({ data, onDayClick, userId }: { data: any; onDayClick: (date: string) => void; userId?: number }) {
+  if (!data || !data.weeks) {
+    return (
+      <div className="text-center py-8 text-gray-500">
+        <p>Loading calendar...</p>
+      </div>
+    );
+  }
+
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  return (
+    <div>
+      <div className="grid grid-cols-7 gap-1 mb-2">
+        {dayNames.map((day) => (
+          <div key={day} className="text-center text-xs font-semibold text-gray-600 py-2">
+            {day}
+          </div>
+        ))}
+      </div>
+
+      {data.weeks.map((week: any, weekIndex: number) => (
+        <div key={weekIndex} className="grid grid-cols-7 gap-1 mb-1">
+          {week.days.map((day: any, dayIndex: number) => {
+            const date = new Date(day.date);
+            const today = new Date();
+            const isToday = 
+              date.getDate() === today.getDate() &&
+              date.getMonth() === today.getMonth() &&
+              date.getFullYear() === today.getFullYear();
+
+            const myShifts = day.shifts?.filter((s: any) => s.requested_by === userId) || [];
+            const hasApproved = myShifts.some((s: any) => s.status === 'APPROVED');
+            const hasPending = myShifts.some((s: any) => s.status === 'PENDING');
+
+            let statusColor = 'bg-white border-gray-200';
+            if (hasApproved) {
+              statusColor = 'bg-green-50 border-green-300';
+            } else if (hasPending) {
+              statusColor = 'bg-yellow-50 border-yellow-300';
+            }
+
+            return (
+              <button
+                key={dayIndex}
+                onClick={() => day.is_current_month && onDayClick(day.date)}
+                disabled={!day.is_current_month}
+                className={`aspect-square p-2 text-sm border-2 rounded-lg transition-all ${statusColor} ${
+                  !day.is_current_month 
+                    ? 'text-gray-300 bg-gray-50 border-gray-100 cursor-default' 
+                    : 'hover:shadow-md cursor-pointer'
+                } ${isToday ? 'ring-2 ring-blue-500' : ''}`}
+              >
+                <div className="flex flex-col items-center justify-center h-full">
+                  <span className={`${isToday ? 'text-blue-600 font-bold' : 'text-gray-900'} ${!day.is_current_month ? 'text-gray-300' : ''}`}>
+                    {date.getDate()}
+                  </span>
+                  {day.is_current_month && myShifts.length > 0 && (
+                    <div className="flex gap-1 mt-1">
+                      {hasApproved && (
+                        <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
+                      )}
+                      {hasPending && (
+                        <div className="w-1.5 h-1.5 bg-yellow-500 rounded-full"></div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      ))}
+
+      <div className="mt-4 flex items-center justify-center space-x-4 text-xs text-gray-600">
+        <div className="flex items-center space-x-1.5">
+          <div className="w-3 h-3 bg-green-50 border-2 border-green-300 rounded"></div>
+          <span>Approved Shift</span>
+        </div>
+        <div className="flex items-center space-x-1.5">
+          <div className="w-3 h-3 bg-yellow-50 border-2 border-yellow-300 rounded"></div>
+          <span>Pending</span>
+        </div>
+        <div className="flex items-center space-x-1.5">
+          <div className="w-3 h-3 bg-white border-2 border-gray-200 rounded"></div>
+          <span>No Shifts</span>
+        </div>
+      </div>
     </div>
   );
 }

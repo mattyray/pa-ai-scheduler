@@ -1,5 +1,5 @@
 # TOTETAXI FRONTEND EXPORT
-# Generated: 2025-11-06 10:11:15.274659
+# Generated: 2025-11-07 12:33:21.355416
 # Files: 29
 
 # ==== app/admin/dashboard/SuggestShiftModal.tsx ====
@@ -2817,7 +2817,20 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
 
+.animate-slide-in-right {
+  animation: slide-in-right 0.3s ease-out;
+}
 ```
 
 # ==== app/layout.tsx ====
@@ -3771,19 +3784,26 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { shiftsAPI, ShiftRequest } from '@/lib/shifts-api';
 
-export default function MyRequestsPage() {
+type TabType = 'pending' | 'approved' | 'rejected';
+
+export default function RequestsPage() {
   const router = useRouter();
-  const { user, isPA, loading: authLoading, logout } = useAuth();
+  const { user, isPA, isAdmin, loading: authLoading, logout } = useAuth();
 
   const [requests, setRequests] = useState<ShiftRequest[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
+  const [activeTab, setActiveTab] = useState<TabType>('pending');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [rejectingId, setRejectingId] = useState<number | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
-    if (!authLoading && !isPA) {
+    if (!authLoading && !user) {
       router.push('/login');
     }
-  }, [authLoading, isPA, router]);
+  }, [authLoading, user, router]);
 
   useEffect(() => {
     if (user) {
@@ -3796,11 +3816,79 @@ export default function MyRequestsPage() {
       setLoading(true);
       const response = await shiftsAPI.listShifts();
       const shiftsData = response.data.results || response.data;
-      setRequests(Array.isArray(shiftsData) ? shiftsData : []);
+      
+      let requestsList = Array.isArray(shiftsData) ? shiftsData : [];
+      
+      if (isPA) {
+        requestsList = requestsList.filter(r => r.requested_by === user?.id);
+      }
+      
+      requestsList.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      
+      setRequests(requestsList);
     } catch (err) {
       console.error('Failed to load requests:', err);
+      showToast('Failed to load requests', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const showToast = (message: string, type: 'success' | 'error') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const handleApprove = async (id: number) => {
+    try {
+      await shiftsAPI.approveRequest(id);
+      showToast('Shift approved successfully!', 'success');
+      setSelectedIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(id);
+        return newSet;
+      });
+      loadRequests();
+    } catch (err: any) {
+      console.error('Failed to approve request:', err);
+      showToast(err.response?.data?.error || 'Failed to approve request', 'error');
+    }
+  };
+
+  const handleBulkApprove = async () => {
+    if (selectedIds.size === 0) return;
+    
+    try {
+      await Promise.all(Array.from(selectedIds).map(id => shiftsAPI.approveRequest(id)));
+      showToast(`${selectedIds.size} shifts approved successfully!`, 'success');
+      setSelectedIds(new Set());
+      loadRequests();
+    } catch (err) {
+      console.error('Failed to bulk approve:', err);
+      showToast('Some approvals failed', 'error');
+    }
+  };
+
+  const handleRejectClick = (id: number) => {
+    setRejectingId(id);
+    setRejectReason('');
+  };
+
+  const handleRejectConfirm = async (id: number) => {
+    if (!rejectReason.trim()) {
+      showToast('Please provide a rejection reason', 'error');
+      return;
+    }
+
+    try {
+      await shiftsAPI.rejectRequest(id, rejectReason);
+      showToast('Request rejected', 'success');
+      setRejectingId(null);
+      setRejectReason('');
+      loadRequests();
+    } catch (err) {
+      console.error('Failed to reject request:', err);
+      showToast('Failed to reject request', 'error');
     }
   };
 
@@ -3808,18 +3896,35 @@ export default function MyRequestsPage() {
     if (!confirm('Are you sure you want to cancel this request?')) return;
 
     try {
-      await shiftsAPI.deleteShiftRequest(id);
+      await shiftsAPI.cancelRequest(id);
+      showToast('Request cancelled', 'success');
       loadRequests();
     } catch (err) {
       console.error('Failed to cancel request:', err);
-      alert('Failed to cancel request');
+      showToast('Failed to cancel request', 'error');
     }
   };
 
-  const filteredRequests = requests.filter(req => {
-    if (filter === 'all') return true;
-    return req.status.toLowerCase() === filter;
-  });
+  const toggleSelection = (id: number) => {
+    setSelectedIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    const currentTabRequests = getFilteredRequests();
+    if (selectedIds.size === currentTabRequests.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(currentTabRequests.map(r => r.id)));
+    }
+  };
 
   const formatTime = (time: string) => {
     const [hours, minutes] = time.split(':');
@@ -3829,54 +3934,140 @@ export default function MyRequestsPage() {
     return `${hour12}:${minutes} ${ampm}`;
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'PENDING':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'APPROVED':
-        return 'bg-green-100 text-green-800';
-      case 'REJECTED':
-        return 'bg-red-100 text-red-800';
-      case 'CANCELLED':
-        return 'bg-gray-100 text-gray-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    if (date.toDateString() === today.toDateString()) {
+      return 'TODAY';
+    } else if (date.toDateString() === tomorrow.toDateString()) {
+      return 'TOMORROW';
+    } else {
+      return date.toLocaleDateString('en-US', { 
+        weekday: 'short',
+        month: 'short', 
+        day: 'numeric',
+        year: date.getFullYear() !== today.getFullYear() ? 'numeric' : undefined
+      });
     }
   };
 
+  const isUrgent = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return date <= tomorrow;
+  };
+
+  const isOvernight = (startTime: string, endTime: string) => {
+    const start = parseInt(startTime.split(':')[0]);
+    const end = parseInt(endTime.split(':')[0]);
+    return end < start;
+  };
+
+  const getFilteredRequests = () => {
+    let filtered = requests;
+
+    // Filter by tab
+    if (activeTab === 'pending') {
+      filtered = filtered.filter(r => r.status === 'PENDING');
+    } else if (activeTab === 'approved') {
+      filtered = filtered.filter(r => r.status === 'APPROVED');
+    } else if (activeTab === 'rejected') {
+      filtered = filtered.filter(r => r.status === 'REJECTED' || r.status === 'CANCELLED');
+    }
+
+    // Filter by search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(r => {
+        const paName = r.requested_by_name?.toLowerCase() || '';
+        const date = new Date(r.date).toLocaleDateString('en-US').toLowerCase();
+        const notes = r.notes?.toLowerCase() || '';
+        const period = r.schedule_period_name?.toLowerCase() || '';
+        
+        return paName.includes(query) || 
+               date.includes(query) || 
+               notes.includes(query) ||
+               period.includes(query);
+      });
+    }
+
+    return filtered;
+  };
+
+  const pendingCount = requests.filter(r => r.status === 'PENDING').length;
+  const approvedCount = requests.filter(r => r.status === 'APPROVED').length;
+  const rejectedCount = requests.filter(r => r.status === 'REJECTED' || r.status === 'CANCELLED').length;
+
+  const filteredRequests = getFilteredRequests();
+
   if (authLoading || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p>Loading...</p>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-blue-600 border-r-transparent"></div>
+          <p className="mt-2 text-gray-600">Loading requests...</p>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Navigation Header */}
-      <nav className="bg-white shadow-sm">
+      {/* Toast Notification */}
+      {toast && (
+        <div className="fixed top-4 right-4 z-50 animate-slide-in-right">
+          <div className={`rounded-lg shadow-lg p-4 ${
+            toast.type === 'success' ? 'bg-green-500' : 'bg-red-500'
+          } text-white flex items-center space-x-3`}>
+            {toast.type === 'success' ? (
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            ) : (
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            )}
+            <span className="font-medium">{toast.message}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Navigation */}
+      <nav className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center space-x-4">
               <button
-                onClick={() => router.push('/dashboard')}
-                className="text-gray-600 hover:text-gray-900"
+                onClick={() => router.push(isAdmin ? '/admin/dashboard' : '/dashboard')}
+                className="text-gray-600 hover:text-gray-900 font-medium transition-colors"
               >
-                ← Back to Dashboard
+                ← Back
               </button>
-              <h1 className="text-xl font-bold text-gray-900">My Shift Requests</h1>
+              <h1 className="text-xl font-bold text-gray-900">
+                {isAdmin ? 'Shift Requests' : 'My Requests'}
+              </h1>
             </div>
             <div className="flex items-center space-x-4">
-              <button
-                onClick={() => router.push('/requests/new')}
-                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
-              >
-                New Request
-              </button>
+              {isPA && (
+                <button
+                  onClick={() => router.push('/requests/new')}
+                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 transition-colors"
+                >
+                  <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  New Request
+                </button>
+              )}
               <button
                 onClick={logout}
-                className="text-sm text-gray-600 hover:text-gray-900"
+                className="text-sm text-gray-600 hover:text-gray-900 transition-colors"
               >
                 Logout
               </button>
@@ -3886,153 +4077,360 @@ export default function MyRequestsPage() {
       </nav>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="px-4 sm:px-0">
-          {/* Filter Tabs */}
-          <div className="mb-6">
-            <div className="border-b border-gray-200">
-              <nav className="-mb-px flex space-x-8">
+      <main className="max-w-6xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+        
+        {/* Tabs and Search */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
+          <div className="border-b border-gray-200">
+            <div className="flex items-center justify-between px-6 pt-4">
+              <nav className="flex space-x-8">
                 <button
-                  onClick={() => setFilter('all')}
-                  className={`${
-                    filter === 'all'
-                      ? 'border-blue-500 text-blue-600'
+                  onClick={() => {
+                    setActiveTab('pending');
+                    setSelectedIds(new Set());
+                  }}
+                  className={`pb-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                    activeTab === 'pending'
+                      ? 'border-yellow-500 text-yellow-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+                  }`}
                 >
-                  All ({requests.length})
+                  <div className="flex items-center space-x-2">
+                    <span>Pending Approval</span>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                      activeTab === 'pending' 
+                        ? 'bg-yellow-100 text-yellow-800' 
+                        : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {pendingCount}
+                    </span>
+                  </div>
                 </button>
+
                 <button
-                  onClick={() => setFilter('pending')}
-                  className={`${
-                    filter === 'pending'
-                      ? 'border-blue-500 text-blue-600'
+                  onClick={() => {
+                    setActiveTab('approved');
+                    setSelectedIds(new Set());
+                  }}
+                  className={`pb-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                    activeTab === 'approved'
+                      ? 'border-green-500 text-green-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+                  }`}
                 >
-                  Pending ({requests.filter(r => r.status === 'PENDING').length})
+                  <div className="flex items-center space-x-2">
+                    <span>Approved</span>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                      activeTab === 'approved' 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {approvedCount}
+                    </span>
+                  </div>
                 </button>
+
                 <button
-                  onClick={() => setFilter('approved')}
-                  className={`${
-                    filter === 'approved'
-                      ? 'border-blue-500 text-blue-600'
+                  onClick={() => {
+                    setActiveTab('rejected');
+                    setSelectedIds(new Set());
+                  }}
+                  className={`pb-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                    activeTab === 'rejected'
+                      ? 'border-red-500 text-red-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+                  }`}
                 >
-                  Approved ({requests.filter(r => r.status === 'APPROVED').length})
-                </button>
-                <button
-                  onClick={() => setFilter('rejected')}
-                  className={`${
-                    filter === 'rejected'
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
-                >
-                  Rejected ({requests.filter(r => r.status === 'REJECTED').length})
+                  <div className="flex items-center space-x-2">
+                    <span>Rejected / Cancelled</span>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                      activeTab === 'rejected' 
+                        ? 'bg-red-100 text-red-800' 
+                        : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {rejectedCount}
+                    </span>
+                  </div>
                 </button>
               </nav>
+
+              {isAdmin && activeTab === 'pending' && filteredRequests.length > 0 && (
+                <div className="flex items-center space-x-3 pb-4">
+                  <button
+                    onClick={toggleSelectAll}
+                    className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                  >
+                    {selectedIds.size === filteredRequests.length ? 'Deselect All' : 'Select All'}
+                  </button>
+                  {selectedIds.size > 0 && (
+                    <button
+                      onClick={handleBulkApprove}
+                      className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors shadow-sm"
+                    >
+                      Approve Selected ({selectedIds.size})
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Requests List */}
-          <div className="bg-white shadow overflow-hidden sm:rounded-md">
-            {filteredRequests.length === 0 ? (
-              <div className="text-center py-12">
-                <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          {/* Search Bar */}
+          <div className="p-4 border-b border-gray-200 bg-gray-50">
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
-                <h3 className="mt-2 text-sm font-medium text-gray-900">No requests</h3>
-                <p className="mt-1 text-sm text-gray-500">
-                  {filter === 'all' ? 'Get started by creating a new shift request.' : `No ${filter} requests.`}
-                </p>
-                {filter === 'all' && (
-                  <div className="mt-6">
-                    <button
-                      onClick={() => router.push('/requests/new')}
-                      className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
-                    >
-                      <svg className="-ml-1 mr-2 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                      New Request
-                    </button>
-                  </div>
-                )}
               </div>
-            ) : (
-              <ul className="divide-y divide-gray-200">
-                {filteredRequests.map((request) => (
-                  <li key={request.id}>
-                    <div className="px-4 py-4 sm:px-6 hover:bg-gray-50">
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center justify-between">
-                            <p className="text-lg font-medium text-gray-900">
-                              {new Date(request.date).toLocaleDateString('en-US', { 
-                                weekday: 'long', 
-                                month: 'long', 
-                                day: 'numeric', 
-                                year: 'numeric' 
-                              })}
-                            </p>
-                            <span className={`ml-2 px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(request.status)}`}>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by PA name, date, notes, or period..."
+                className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                >
+                  <svg className="h-5 w-5 text-gray-400 hover:text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+            {searchQuery && (
+              <p className="mt-2 text-sm text-gray-600">
+                Found {filteredRequests.length} result{filteredRequests.length !== 1 ? 's' : ''}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Tab Content */}
+        <div className="space-y-3">
+          {filteredRequests.length === 0 ? (
+            <div className="bg-white rounded-lg shadow-sm border-2 border-dashed border-gray-300 p-12 text-center">
+              <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                {activeTab === 'pending' && (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                )}
+                {activeTab === 'approved' && (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                )}
+                {activeTab === 'rejected' && (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                )}
+              </svg>
+              <h3 className="mt-2 text-sm font-medium text-gray-900">
+                {searchQuery ? 'No results found' : `No ${activeTab} requests`}
+              </h3>
+              <p className="mt-1 text-sm text-gray-500">
+                {searchQuery 
+                  ? 'Try adjusting your search terms' 
+                  : activeTab === 'pending' && isPA
+                  ? 'Get started by creating a new shift request'
+                  : `No ${activeTab} requests to display`
+                }
+              </p>
+              {activeTab === 'pending' && isPA && !searchQuery && (
+                <div className="mt-6">
+                  <button
+                    onClick={() => router.push('/requests/new')}
+                    className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700"
+                  >
+                    <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    New Request
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            filteredRequests.map((request) => (
+              <div
+                key={request.id}
+                className={`bg-white rounded-lg shadow-sm border-2 transition-all ${
+                  activeTab === 'pending' && isUrgent(request.date) 
+                    ? 'border-orange-300 bg-orange-50/30' 
+                    : activeTab === 'pending'
+                    ? 'border-gray-200 hover:border-blue-300'
+                    : activeTab === 'approved'
+                    ? 'border-l-4 border-l-green-500 border-t border-r border-b border-gray-200'
+                    : 'border-l-4 border-l-red-400 border-t border-r border-b border-gray-200'
+                } ${selectedIds.has(request.id) ? 'ring-2 ring-blue-500' : ''}`}
+              >
+                <div className="p-5">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-start space-x-4 flex-1">
+                      {isAdmin && activeTab === 'pending' && (
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(request.id)}
+                          onChange={() => toggleSelection(request.id)}
+                          className="mt-1 h-5 w-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                        />
+                      )}
+                      
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-3 mb-2">
+                          <span className={`inline-flex items-center px-3 py-1 rounded-lg text-sm font-bold ${
+                            activeTab === 'pending' && isUrgent(request.date) 
+                              ? 'bg-orange-500 text-white' 
+                              : activeTab === 'pending'
+                              ? 'bg-blue-500 text-white'
+                              : activeTab === 'approved'
+                              ? 'bg-green-500 text-white'
+                              : 'bg-red-500 text-white'
+                          }`}>
+                            {formatDate(request.date)}
+                          </span>
+                          {isOvernight(request.start_time, request.end_time) && (
+                            <span className="inline-flex items-center px-2 py-1 rounded bg-purple-100 text-purple-800 text-xs font-medium">
+                              🌙 Overnight
+                            </span>
+                          )}
+                          {activeTab !== 'pending' && (
+                            <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                              activeTab === 'approved' 
+                                ? 'bg-green-100 text-green-800'
+                                : 'bg-red-100 text-red-800'
+                            }`}>
                               {request.status}
                             </span>
-                          </div>
-                          <div className="mt-2 sm:flex sm:justify-between">
-                            <div className="sm:flex space-x-6">
-                              <p className="flex items-center text-sm text-gray-500">
-                                <svg className="flex-shrink-0 mr-1.5 h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                                {formatTime(request.start_time)} - {formatTime(request.end_time)} ({request.duration_hours} hrs)
-                              </p>
-                              <p className="flex items-center text-sm text-gray-500">
-                                <svg className="flex-shrink-0 mr-1.5 h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                </svg>
-                                {request.schedule_period_name}
-                              </p>
-                            </div>
-                          </div>
-                          {request.notes && (
-                            <p className="mt-2 text-sm text-gray-600">
-                              <span className="font-medium">Notes:</span> {request.notes}
-                            </p>
-                          )}
-                          {request.rejected_reason && (
-                            <div className="mt-2 bg-red-50 border border-red-200 rounded p-2">
-                              <p className="text-sm text-red-800">
-                                <span className="font-medium">Rejection reason:</span> {request.rejected_reason}
-                              </p>
-                            </div>
                           )}
                         </div>
-                        {request.status === 'PENDING' && (
-                          <div className="ml-4">
-                            <button
-                              onClick={() => handleCancel(request.id)}
-                              className="inline-flex items-center px-3 py-2 border border-red-300 shadow-sm text-sm leading-4 font-medium rounded-md text-red-700 bg-white hover:bg-red-50"
-                            >
-                              Cancel
-                            </button>
+
+                        {isAdmin && (
+                          <p className="text-lg font-semibold text-gray-900 mb-1">
+                            {request.requested_by_name}
+                          </p>
+                        )}
+
+                        <div className="flex items-center space-x-4 text-gray-600 mb-2">
+                          <div className="flex items-center space-x-1.5">
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <span className="font-medium">
+                              {formatTime(request.start_time)} → {formatTime(request.end_time)}
+                            </span>
+                            <span className="text-gray-400">({request.duration_hours}h)</span>
+                          </div>
+                        </div>
+
+                        <p className="text-sm text-gray-500">
+                          📅 {request.schedule_period_name}
+                        </p>
+
+                        {request.notes && (
+                          <div className="mt-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                            <p className="text-sm text-gray-700">
+                              <span className="font-medium">Notes:</span> {request.notes}
+                            </p>
+                          </div>
+                        )}
+
+                        {request.rejected_reason && (
+                          <div className="mt-3 p-3 bg-red-50 rounded-lg border border-red-200">
+                            <p className="text-sm text-red-800">
+                              <span className="font-medium">Rejection reason:</span> {request.rejected_reason}
+                            </p>
+                          </div>
+                        )}
+
+                        {request.cancellation_reason && (
+                          <div className="mt-3 p-3 bg-gray-100 rounded-lg border border-gray-300">
+                            <p className="text-sm text-gray-700">
+                              <span className="font-medium">Cancellation reason:</span> {request.cancellation_reason}
+                            </p>
+                          </div>
+                        )}
+
+                        {rejectingId === request.id && (
+                          <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Rejection Reason *
+                            </label>
+                            <textarea
+                              value={rejectReason}
+                              onChange={(e) => setRejectReason(e.target.value)}
+                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                              rows={3}
+                              placeholder="Explain why this request is being rejected..."
+                              autoFocus
+                            />
+                            <div className="flex space-x-2 mt-3">
+                              <button
+                                onClick={() => handleRejectConfirm(request.id)}
+                                disabled={!rejectReason.trim()}
+                                className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                Confirm Rejection
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setRejectingId(null);
+                                  setRejectReason('');
+                                }}
+                                className="px-4 py-2 bg-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-300 transition-colors"
+                              >
+                                Cancel
+                              </button>
+                            </div>
                           </div>
                         )}
                       </div>
                     </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+
+                    {rejectingId !== request.id && activeTab === 'pending' && (
+                      <div className="flex flex-col space-y-2 ml-4">
+                        {isAdmin && (
+                          <>
+                            <button
+                              onClick={() => handleApprove(request.id)}
+                              className="px-6 py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors shadow-sm hover:shadow flex items-center space-x-2"
+                            >
+                              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                              <span>Approve</span>
+                            </button>
+                            <button
+                              onClick={() => handleRejectClick(request.id)}
+                              className="px-6 py-3 bg-white border-2 border-red-300 text-red-700 font-medium rounded-lg hover:bg-red-50 transition-colors flex items-center space-x-2"
+                            >
+                              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                              <span>Reject</span>
+                            </button>
+                          </>
+                        )}
+                        {isPA && (
+                          <button
+                            onClick={() => handleCancel(request.id)}
+                            className="px-4 py-2 bg-white border-2 border-red-300 text-red-700 font-medium rounded-lg hover:bg-red-50 transition-colors"
+                          >
+                            Cancel
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
         </div>
+
       </main>
     </div>
   );
 }
-
 ```
 
 # ==== app/schedule/page.tsx ====
@@ -4163,18 +4561,18 @@ export default function SchedulePage() {
     
     try {
       let response;
-      const paFilter = user?.role === 'PA' ? `?pa_id=${user.id}` : '';
+      const paFilter = '';
       
       if (viewType === 'month') {
         const year = currentDate.getFullYear();
         const month = currentDate.getMonth() + 1;
-        response = await api.get(`/api/calendar/month/${year}/${month}/${paFilter}`);
+        response = await api.get(`/api/calendar/month/${year}/${month}${paFilter}`);
       } else if (viewType === 'week') {
         const { year, week } = getISOWeek(currentDate);
-        response = await api.get(`/api/calendar/week/${year}/${week}/${paFilter}`);
+        response = await api.get(`/api/calendar/week/${year}/${week}${paFilter}`);
       } else {
         const dateStr = currentDate.toISOString().split('T')[0];
-        response = await api.get(`/api/calendar/day/${dateStr}/${paFilter}`);
+        response = await api.get(`/api/calendar/day/${dateStr}${paFilter}`);
       }
       
       setCalendarData(response.data);
@@ -4240,6 +4638,8 @@ export default function SchedulePage() {
   };
 
   const handleShiftClick = (shift: any) => {
+    console.log('🔵 Shift clicked:', shift);
+    
     if (shift.status === 'PENDING' && user?.role === 'ADMIN') {
       setSelectedShift(shift);
       setApproveModalOpen(true);
@@ -4276,6 +4676,15 @@ export default function SchedulePage() {
       endTime: endTime || '09:00',
     });
     setSuggestModalOpen(true);
+  };
+
+  const handlePARequestClick = (date: string, startTime: string, endTime: string) => {
+    const params = new URLSearchParams({
+      date,
+      start_time: startTime,
+      end_time: endTime,
+    });
+    router.push(`/requests/new?${params.toString()}`);
   };
 
   if (authLoading || !initialized) {
@@ -4434,9 +4843,24 @@ export default function SchedulePage() {
         ) : viewType === 'month' ? (
           <MonthView data={calendarData} onDayClick={handleMonthDayClick} onShiftClick={handleShiftClick} isAdmin={user?.role === 'ADMIN'} currentUserId={user?.id} />
         ) : viewType === 'week' ? (
-          <WeekView data={calendarData} onDayClick={handleWeekDayClick} onSuggestShift={openSuggestModal} onShiftClick={handleShiftClick} isAdmin={user?.role === 'ADMIN'} currentUserId={user?.id} />
+          <WeekView 
+            data={calendarData} 
+            onDayClick={handleWeekDayClick} 
+            onSuggestShift={openSuggestModal} 
+            onShiftClick={handleShiftClick}
+            onPARequest={handlePARequestClick}
+            isAdmin={user?.role === 'ADMIN'} 
+            currentUserId={user?.id} 
+          />
         ) : (
-          <DayView data={calendarData} onSuggestShift={openSuggestModal} onShiftClick={handleShiftClick} isAdmin={user?.role === 'ADMIN'} currentUserId={user?.id} />
+          <DayView 
+            data={calendarData} 
+            onSuggestShift={openSuggestModal} 
+            onShiftClick={handleShiftClick}
+            onPARequest={handlePARequestClick}
+            isAdmin={user?.role === 'ADMIN'} 
+            currentUserId={user?.id} 
+          />
         )}
       </div>
 
@@ -4638,7 +5062,23 @@ function MonthView({ data, onDayClick, onShiftClick, isAdmin, currentUserId }: {
   );
 }
 
-function WeekView({ data, onDayClick, onSuggestShift, onShiftClick, isAdmin, currentUserId }: { data: any; onDayClick: (date: string) => void; onSuggestShift: (date: string, startTime?: string, endTime?: string) => void; onShiftClick: (shift: any) => void; isAdmin?: boolean; currentUserId?: number }) {
+function WeekView({ 
+  data, 
+  onDayClick, 
+  onSuggestShift, 
+  onShiftClick,
+  onPARequest,
+  isAdmin, 
+  currentUserId 
+}: { 
+  data: any; 
+  onDayClick: (date: string) => void; 
+  onSuggestShift: (date: string, startTime?: string, endTime?: string) => void; 
+  onShiftClick: (shift: any) => void;
+  onPARequest: (date: string, startTime: string, endTime: string) => void;
+  isAdmin?: boolean; 
+  currentUserId?: number 
+}) {
   const hours = Array.from({ length: 24 }, (_, i) => i);
   const days = data.days || [];
 
@@ -4650,13 +5090,15 @@ function WeekView({ data, onDayClick, onSuggestShift, onShiftClick, isAdmin, cur
   };
 
   const handleCellClick = (date: string, hour: number) => {
-    if (!isAdmin) return;
-    
     const startTime = `${hour.toString().padStart(2, '0')}:00`;
     const endHour = hour + 3;
     const endTime = `${endHour.toString().padStart(2, '0')}:00`;
     
-    onSuggestShift(date, startTime, endTime);
+    if (isAdmin) {
+      onSuggestShift(date, startTime, endTime);
+    } else {
+      onPARequest(date, startTime, endTime);
+    }
   };
 
   return (
@@ -4711,9 +5153,9 @@ function WeekView({ data, onDayClick, onSuggestShift, onShiftClick, isAdmin, cur
                 return (
                   <div 
                     key={`${day.date}-${hour}`} 
-                    className={`relative p-1 min-h-[3rem] ${isAdmin && !hasShift ? 'cursor-pointer hover:bg-blue-50 transition-colors' : ''}`}
+                    className={`relative p-1 min-h-[3rem] ${!hasShift ? 'cursor-pointer hover:bg-blue-50 transition-colors' : ''}`}
                     onClick={() => !hasShift && handleCellClick(day.date, hour)}
-                    title={isAdmin && !hasShift ? 'Click to suggest shift' : ''}
+                    title={!hasShift ? (isAdmin ? 'Click to suggest shift' : 'Click to request shift') : ''}
                   >
                     {shiftsStartingThisHour.map((shift: any) => {
                       const paName = shift.requested_by_name || shift.requested_by || 'Unknown';
@@ -4771,17 +5213,32 @@ function WeekView({ data, onDayClick, onSuggestShift, onShiftClick, isAdmin, cur
         })}
       </div>
 
-      {isAdmin && (
-        <div className="border-t border-gray-200 bg-blue-50 px-4 py-3">
-          <p className="text-sm text-blue-800">
-            💡 <strong>Tip:</strong> Click on any empty time slot to suggest a shift for that time
-          </p>
-        </div>
-      )}
+      <div className="border-t border-gray-200 bg-blue-50 px-4 py-3">
+        <p className="text-sm text-blue-800">
+          💡 <strong>Tip:</strong> {isAdmin 
+            ? 'Click on any empty time slot to suggest a shift for that time' 
+            : 'Click on any empty time slot to request a shift for that time'}
+        </p>
+      </div>
     </div>
   );
 }
-function DayView({ data, onSuggestShift, onShiftClick, isAdmin, currentUserId }: { data: any; onSuggestShift: (date: string, startTime?: string, endTime?: string) => void; onShiftClick: (shift: any) => void; isAdmin?: boolean; currentUserId?: number }) {
+
+function DayView({ 
+  data, 
+  onSuggestShift, 
+  onShiftClick,
+  onPARequest,
+  isAdmin, 
+  currentUserId 
+}: { 
+  data: any; 
+  onSuggestShift: (date: string, startTime?: string, endTime?: string) => void; 
+  onShiftClick: (shift: any) => void;
+  onPARequest: (date: string, startTime: string, endTime: string) => void;
+  isAdmin?: boolean; 
+  currentUserId?: number 
+}) {
   const hours = Array.from({ length: 24 }, (_, i) => i);
   const shifts = data.shifts || [];
 
@@ -4803,12 +5260,8 @@ function DayView({ data, onSuggestShift, onShiftClick, isAdmin, currentUserId }:
   };
 
   const handleCellClick = (hour: number) => {
-    if (!isAdmin) return;
-    
-    // Check if any shift covers this hour
     const coveringShifts = getShiftsCoveringHour(hour);
     if (coveringShifts.length > 0) {
-      // Click the first covering shift
       const shift = coveringShifts[0];
       if (isShiftClickable(shift)) {
         onShiftClick(shift);
@@ -4816,17 +5269,21 @@ function DayView({ data, onSuggestShift, onShiftClick, isAdmin, currentUserId }:
       return;
     }
     
-    // Otherwise suggest a new shift
     const startTime = `${hour.toString().padStart(2, '0')}:00`;
     const endHour = hour + 3;
     const endTime = `${endHour.toString().padStart(2, '0')}:00`;
-    onSuggestShift(data.date, startTime, endTime);
+    
+    if (isAdmin) {
+      onSuggestShift(data.date, startTime, endTime);
+    } else {
+      onPARequest(data.date, startTime, endTime);
+    }
   };
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
       <div className="border-b border-gray-200 bg-gray-50 p-4">
-        <h3 className="text-lg font-semibold text-gray-900">{data.date_formatted}</h3>
+        <h3 className="text-lg font-semibold text-gray-900">{data.day_name}</h3>
         <p className="text-sm text-gray-600 mt-1">
           {shifts.length} shift{shifts.length !== 1 ? 's' : ''} scheduled
         </p>
@@ -4856,18 +5313,18 @@ function DayView({ data, onSuggestShift, onShiftClick, isAdmin, currentUserId }:
 
               <div 
                 className={`relative p-2 min-h-[3rem] flex-1 ${
-                  isAdmin && hasShiftCoverage && isShiftClickable(shiftsCoveringThisHour[0])
+                  hasShiftCoverage && isShiftClickable(shiftsCoveringThisHour[0])
                     ? 'cursor-pointer hover:bg-blue-50/50 transition-colors'
-                    : isAdmin && !hasShiftCoverage
+                    : !hasShiftCoverage
                     ? 'cursor-pointer hover:bg-blue-50 transition-colors'
                     : ''
                 }`}
                 onClick={() => handleCellClick(hour)}
                 title={
-                  isAdmin && hasShiftCoverage && isShiftClickable(shiftsCoveringThisHour[0])
+                  hasShiftCoverage && isShiftClickable(shiftsCoveringThisHour[0])
                     ? 'Click to manage shift'
-                    : isAdmin && !hasShiftCoverage
-                    ? 'Click to suggest shift'
+                    : !hasShiftCoverage
+                    ? (isAdmin ? 'Click to suggest shift' : 'Click to request shift')
                     : ''
                 }
               >
@@ -4927,16 +5384,17 @@ function DayView({ data, onSuggestShift, onShiftClick, isAdmin, currentUserId }:
         })}
       </div>
 
-      {isAdmin && (
-        <div className="border-t border-gray-200 bg-blue-50 px-4 py-3">
-          <p className="text-sm text-blue-800">
-            💡 <strong>Tip:</strong> Click on any empty time slot to suggest a shift, or click on a shift to manage it
-          </p>
-        </div>
-      )}
+      <div className="border-t border-gray-200 bg-blue-50 px-4 py-3">
+        <p className="text-sm text-blue-800">
+          💡 <strong>Tip:</strong> {isAdmin
+            ? 'Click on any empty time slot to suggest a shift, or click on a shift to manage it'
+            : 'Click on any empty time slot to request a shift, or click on your shifts to cancel them'}
+        </p>
+      </div>
     </div>
   );
 }
+
 function ApproveRejectModal({ isOpen, shift, onClose, onSuccess }: { isOpen: boolean; shift: any; onClose: () => void; onSuccess: () => void }) {
   const [mode, setMode] = useState<'choose' | 'approve' | 'reject'>('choose');
   const [adminNotes, setAdminNotes] = useState('');
@@ -4953,15 +5411,43 @@ function ApproveRejectModal({ isOpen, shift, onClose, onSuccess }: { isOpen: boo
 
   const handleApprove = async () => {
     if (!shift) return;
+    
+    console.log('🚀 Attempting to approve shift:', {
+      shiftId: shift.id,
+      adminNotes,
+      userRole: localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user') || '{}').role : 'unknown',
+      hasToken: !!localStorage.getItem('access_token')
+    });
+    
     setLoading(true);
+    
     try {
-      await shiftsAPI.approveRequest(shift.id, adminNotes);
+      const response = await shiftsAPI.approveRequest(shift.id, adminNotes);
+      console.log('✅ Approve successful:', response.data);
       onSuccess();
     } catch (err: any) {
+      console.error('❌ Approve failed:', {
+        status: err.response?.status,
+        statusText: err.response?.statusText,
+        data: err.response?.data,
+        message: err.message,
+        config: {
+          url: err.config?.url,
+          method: err.config?.method,
+          headers: err.config?.headers
+        }
+      });
+      
       if (err.response?.data?.error) {
-        alert(err.response.data.error);
+        alert(`Error: ${err.response.data.error}`);
+      } else if (err.response?.data?.detail) {
+        alert(`Error: ${err.response.data.detail}`);
+      } else if (err.response?.status === 403) {
+        alert('Access Denied: You do not have permission to approve shifts. Please check if you are logged in as an admin.');
+      } else if (err.response?.status === 401) {
+        alert('Authentication Error: Your session may have expired. Please try logging in again.');
       } else {
-        alert('Failed to approve shift request');
+        alert(`Failed to approve shift: ${err.message}`);
       }
     } finally {
       setLoading(false);
@@ -4973,12 +5459,32 @@ function ApproveRejectModal({ isOpen, shift, onClose, onSuccess }: { isOpen: boo
       alert('Please provide a reason for rejection');
       return;
     }
+    
+    console.log('🚀 Attempting to reject shift:', {
+      shiftId: shift.id,
+      rejectedReason
+    });
+    
     setLoading(true);
+    
     try {
-      await shiftsAPI.rejectRequest(shift.id, rejectedReason);
+      const response = await shiftsAPI.rejectRequest(shift.id, rejectedReason);
+      console.log('✅ Reject successful:', response.data);
       onSuccess();
     } catch (err: any) {
-      alert('Failed to reject shift request');
+      console.error('❌ Reject failed:', {
+        status: err.response?.status,
+        data: err.response?.data,
+        message: err.message
+      });
+      
+      if (err.response?.data?.error) {
+        alert(`Error: ${err.response.data.error}`);
+      } else if (err.response?.data?.detail) {
+        alert(`Error: ${err.response.data.detail}`);
+      } else {
+        alert(`Failed to reject shift: ${err.message}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -5108,7 +5614,6 @@ import axios from 'axios';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8006';
 
-// Create axios instance
 export const api = axios.create({
   baseURL: API_URL,
   headers: {
@@ -5116,7 +5621,20 @@ export const api = axios.create({
   },
 });
 
-// Request interceptor - add JWT token to requests
+let isRefreshing = false;
+let failedQueue: any[] = [];
+
+const processQueue = (error: any, token: string | null = null) => {
+  failedQueue.forEach(prom => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
+  });
+  failedQueue = [];
+};
+
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('access_token');
@@ -5130,47 +5648,78 @@ api.interceptors.request.use(
   }
 );
 
-// Response interceptor - handle 401 errors (refresh token or logout)
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
 
-    // Handle 403 Forbidden - Don't logout, just reject
+    console.log('🔴 API Error:', {
+      status: error.response?.status,
+      url: originalRequest?.url,
+      method: originalRequest?.method,
+      hasRetried: originalRequest._retry
+    });
+
     if (error.response?.status === 403) {
-      console.error('Access forbidden:', error.response?.data?.error || 'You do not have permission to perform this action');
+      console.error('❌ 403 Forbidden');
+      alert(`Access Denied: ${error.response?.data?.error || error.response?.data?.detail || 'You do not have permission to perform this action'}`);
       return Promise.reject(error);
     }
 
-    // If 401 and we haven't tried to refresh yet
     if (error.response?.status === 401 && !originalRequest._retry) {
+      if (isRefreshing) {
+        console.log('⏳ Token refresh already in progress, queueing request...');
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        }).then(token => {
+          originalRequest.headers.Authorization = `Bearer ${token}`;
+          return api(originalRequest);
+        }).catch(err => {
+          return Promise.reject(err);
+        });
+      }
+
       originalRequest._retry = true;
+      isRefreshing = true;
+
+      console.log('🔄 Starting token refresh...');
 
       try {
         const refreshToken = localStorage.getItem('refresh_token');
         
         if (!refreshToken) {
+          console.log('❌ No refresh token found');
           throw new Error('No refresh token');
         }
 
-        // Try to refresh the access token
         const response = await axios.post(`${API_URL}/api/auth/refresh/`, {
           refresh: refreshToken,
         });
 
         const { access } = response.data;
         localStorage.setItem('access_token', access);
-
-        // Retry the original request with new token
+        
+        console.log('✅ Token refreshed successfully');
+        
+        processQueue(null, access);
+        
         originalRequest.headers.Authorization = `Bearer ${access}`;
         return api(originalRequest);
       } catch (refreshError) {
-        // Refresh failed - logout user
+        console.log('❌ Token refresh failed, logging out...');
+        processQueue(refreshError, null);
+        
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
         localStorage.removeItem('user');
-        window.location.href = '/login';
+        
+        setTimeout(() => {
+          window.location.href = '/login';
+        }, 100);
+        
         return Promise.reject(refreshError);
+      } finally {
+        isRefreshing = false;
       }
     }
 
@@ -5178,7 +5727,6 @@ api.interceptors.response.use(
   }
 );
 
-// Auth API calls
 export const authAPI = {
   register: (data: {
     email: string;
@@ -5208,7 +5756,6 @@ export const authAPI = {
   getCurrentUser: () => 
     api.get('/api/auth/me/'),
 };
-
 ```
 
 # ==== lib/auth-context.tsx ====
@@ -5655,6 +6202,7 @@ export interface ShiftRequest {
   notes: string;
   admin_notes: string;
   rejected_reason: string;
+  cancellation_reason?: string;
   created_at: string;
   updated_at: string;
   approved_at: string | null;
