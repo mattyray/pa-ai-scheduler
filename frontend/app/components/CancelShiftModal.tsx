@@ -11,6 +11,10 @@ interface CancelShiftModalProps {
   userRole?: 'ADMIN' | 'PA';
 }
 
+function parseDate(dateStr: string): Date {
+  return new Date(dateStr + 'T12:00:00');
+}
+
 export default function CancelShiftModal({
   isOpen,
   shift,
@@ -50,7 +54,7 @@ export default function CancelShiftModal({
   };
 
   const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
+    const date = parseDate(dateStr);
     return date.toLocaleDateString('en-US', { 
       weekday: 'long',
       year: 'numeric', 
