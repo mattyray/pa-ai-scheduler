@@ -15,6 +15,28 @@ interface PAStats {
   hours_this_month: number;
 }
 
+function parseDate(dateStr: string): Date {
+  return new Date(dateStr + 'T12:00:00');
+}
+
+function isOvernightShift(shift: any): boolean {
+  return shift.end_time < shift.start_time;
+}
+
+function getNextDay(dateStr: string): string {
+  const date = parseDate(dateStr);
+  date.setDate(date.getDate() + 1);
+  return date.toISOString().split('T')[0];
+}
+
+function formatTime12Hour(time: string): string {
+  const [hours, minutes] = time.split(':');
+  const hour = parseInt(hours);
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 || 12;
+  return `${hour12}:${minutes} ${ampm}`;
+}
+
 export default function PADashboard() {
   const router = useRouter();
   const { user, loading, logout } = useAuth();
@@ -96,15 +118,15 @@ export default function PADashboard() {
     const approved = requests.filter(r => r.status === 'APPROVED');
     const pending = requests.filter(r => r.status === 'PENDING');
     
-    const upcomingShifts = approved.filter(r => new Date(r.date) >= today);
+    const upcomingShifts = approved.filter(r => parseDate(r.date) >= today);
     
     const thisWeekShifts = approved.filter(r => {
-      const shiftDate = new Date(r.date);
+      const shiftDate = parseDate(r.date);
       return shiftDate >= startOfWeek && shiftDate <= endOfWeek;
     });
     
     const thisMonthShifts = approved.filter(r => {
-      const shiftDate = new Date(r.date);
+      const shiftDate = parseDate(r.date);
       return shiftDate >= startOfMonth && shiftDate <= endOfMonth;
     });
     
@@ -353,7 +375,7 @@ export default function PADashboard() {
                       }}
                     >
                       <p className="text-sm font-semibold text-gray-900">
-                        {new Date(request.date).toLocaleDateString('en-US', { 
+                        {parseDate(request.date).toLocaleDateString('en-US', { 
                           month: 'short',
                           day: 'numeric',
                           year: 'numeric'
@@ -400,7 +422,7 @@ export default function PADashboard() {
                     <div className="flex justify-between items-start mb-3">
                       <div>
                         <p className="text-sm font-semibold text-gray-900">
-                          {new Date(suggestion.date).toLocaleDateString('en-US', { 
+                          {parseDate(suggestion.date).toLocaleDateString('en-US', { 
                             weekday: 'long',
                             month: 'long',
                             day: 'numeric',
@@ -571,16 +593,6 @@ function PACalendar({ data, onDayClick, userId }: { data: any; onDayClick: (date
 
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-  const getNextDay = (dateStr: string) => {
-    const date = new Date(dateStr + 'T12:00:00');
-    date.setDate(date.getDate() + 1);
-    return date.toISOString().split('T')[0];
-  };
-
-  const isOvernightShift = (shift: any) => {
-    return shift.end_time < shift.start_time;
-  };
-
   const getShiftsForDay = (dayDate: string, dayShifts: any[]) => {
     const myShifts = (dayShifts || []).filter((s: any) => s.requested_by === userId);
     
@@ -616,7 +628,7 @@ function PACalendar({ data, onDayClick, userId }: { data: any; onDayClick: (date
       {data.weeks.map((week: any, weekIndex: number) => (
         <div key={weekIndex} className="grid grid-cols-7 gap-1 mb-1">
           {week.days.map((day: any, dayIndex: number) => {
-            const date = new Date(day.date + 'T12:00:00');
+            const date = parseDate(day.date);
             const today = new Date();
             const isToday = 
               date.getDate() === today.getDate() &&
@@ -690,12 +702,4 @@ function PACalendar({ data, onDayClick, userId }: { data: any; onDayClick: (date
       </div>
     </div>
   );
-}
-
-function formatTime12Hour(time: string): string {
-  const [hours, minutes] = time.split(':');
-  const hour = parseInt(hours);
-  const ampm = hour >= 12 ? 'PM' : 'AM';
-  const hour12 = hour % 12 || 12;
-  return `${hour12}:${minutes} ${ampm}`;
 }
