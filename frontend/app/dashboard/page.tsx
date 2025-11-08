@@ -130,8 +130,8 @@ export default function PADashboard() {
       return shiftDate >= startOfMonth && shiftDate <= endOfMonth;
     });
     
-    const hoursThisWeek = thisWeekShifts.reduce((sum, r) => sum + (r.duration_hours || 0), 0);
-    const hoursThisMonth = thisMonthShifts.reduce((sum, r) => sum + (r.duration_hours || 0), 0);
+    const hoursThisWeek = thisWeekShifts.reduce((sum, r) => sum + parseFloat(r.duration_hours || 0), 0);
+    const hoursThisMonth = thisMonthShifts.reduce((sum, r) => sum + parseFloat(r.duration_hours || 0), 0);
     
     setStats({
       upcoming_shifts: upcomingShifts.length,

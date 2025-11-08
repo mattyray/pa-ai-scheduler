@@ -1,5 +1,5 @@
 # TOTETAXI FRONTEND EXPORT
-# Generated: 2025-11-07 12:33:21.355416
+# Generated: 2025-11-08 17:16:44.270325
 # Files: 29
 
 # ==== app/admin/dashboard/SuggestShiftModal.tsx ====
@@ -338,6 +338,18 @@ interface DashboardStats {
   active_pas: number;
 }
 
+function parseDate(dateStr: string): Date {
+  return new Date(dateStr + 'T12:00:00');
+}
+
+function formatTime12Hour(time: string): string {
+  const [hours, minutes] = time.split(':');
+  const hour = parseInt(hours);
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 || 12;
+  return `${hour12}:${minutes} ${ampm}`;
+}
+
 export default function AdminDashboard() {
   const router = useRouter();
   const { user, isAdmin, loading, logout } = useAuth();
@@ -400,12 +412,12 @@ export default function AdminDashboard() {
       const gaps: any[] = [];
       monthData.data.weeks?.forEach((week: any) => {
         week.days?.forEach((day: any) => {
-          if (day.is_current_month && new Date(day.date) >= new Date()) {
+          if (day.is_current_month && parseDate(day.date) >= new Date()) {
             if (!day.coverage?.morning_covered) {
               gaps.push({
                 date: day.date,
                 time_slot: 'morning',
-                date_formatted: new Date(day.date).toLocaleDateString('en-US', {
+                date_formatted: parseDate(day.date).toLocaleDateString('en-US', {
                   month: 'short',
                   day: 'numeric',
                 }),
@@ -417,7 +429,7 @@ export default function AdminDashboard() {
               gaps.push({
                 date: day.date,
                 time_slot: 'evening',
-                date_formatted: new Date(day.date).toLocaleDateString('en-US', {
+                date_formatted: parseDate(day.date).toLocaleDateString('en-US', {
                   month: 'short',
                   day: 'numeric',
                 }),
@@ -805,8 +817,12 @@ function MiniMonthCalendar({ data, onDayClick }: { data: any; onDayClick: (date:
       <div className="grid grid-cols-7 gap-1">
         {data.weeks?.map((week: any, weekIdx: number) =>
           week.days?.map((day: any, dayIdx: number) => {
-            const date = new Date(day.date);
-            const isToday = date.toDateString() === new Date().toDateString();
+            const date = parseDate(day.date);
+            const today = new Date();
+            const isToday = 
+              date.getDate() === today.getDate() &&
+              date.getMonth() === today.getMonth() &&
+              date.getFullYear() === today.getFullYear();
             const coverageColor = getCoverageColor(day.coverage);
 
             return (
@@ -820,7 +836,7 @@ function MiniMonthCalendar({ data, onDayClick }: { data: any; onDayClick: (date:
                 } ${isToday ? 'ring-2 ring-blue-500' : ''}`}
               >
                 <div className="flex flex-col items-center justify-center h-full">
-                  <span className={`${isToday ? 'text-blue-600 font-bold' : 'text-gray-900'}`}>
+                  <span className={`${isToday ? 'text-blue-600 font-bold' : 'text-gray-900'} ${!day.is_current_month ? 'text-gray-300' : ''}`}>
                     {date.getDate()}
                   </span>
                 </div>
@@ -847,14 +863,6 @@ function MiniMonthCalendar({ data, onDayClick }: { data: any; onDayClick: (date:
     </div>
   );
 }
-
-function formatTime12Hour(time: string): string {
-  const [hours, minutes] = time.split(':');
-  const hour = parseInt(hours);
-  const ampm = hour >= 12 ? 'PM' : 'AM';
-  const hour12 = hour % 12 || 12;
-  return `${hour12}:${minutes} ${ampm}`;
-}
 ```
 
 # ==== app/admin/pas/[id]/page.tsx ====
@@ -866,6 +874,18 @@ import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { pasAPI, PADetail, Shift } from '@/lib/pas-api';
+
+function parseDate(dateStr: string): Date {
+  return new Date(dateStr + 'T12:00:00');
+}
+
+function formatTime12Hour(time: string): string {
+  const [hours, minutes] = time.split(':');
+  const hour = parseInt(hours);
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 || 12;
+  return `${hour12}:${minutes} ${ampm}`;
+}
 
 export default function PADetailPage() {
   const router = useRouter();
@@ -943,7 +963,6 @@ export default function PADetailPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <nav className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
@@ -967,14 +986,11 @@ export default function PADetailPage() {
         </div>
       </nav>
 
-      {/* Main Content */}
       <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
-          {/* Left Column - Profile & Stats */}
           <div className="lg:col-span-1 space-y-6">
             
-            {/* Basic Info Card */}
             <div className="bg-white shadow rounded-lg p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Profile</h2>
               
@@ -1016,7 +1032,7 @@ export default function PADetailPage() {
                 <div>
                   <label className="text-xs font-medium text-gray-500">Date Joined</label>
                   <p className="text-sm text-gray-900">
-                    {new Date(pa.date_joined).toLocaleDateString('en-US', {
+                    {parseDate(pa.date_joined).toLocaleDateString('en-US', {
                       month: 'long',
                       day: 'numeric',
                       year: 'numeric',
@@ -1028,7 +1044,7 @@ export default function PADetailPage() {
                   <div>
                     <label className="text-xs font-medium text-gray-500">Last Login</label>
                     <p className="text-sm text-gray-900">
-                      {new Date(pa.last_login).toLocaleDateString('en-US', {
+                      {parseDate(pa.last_login).toLocaleDateString('en-US', {
                         month: 'short',
                         day: 'numeric',
                         year: 'numeric',
@@ -1039,7 +1055,6 @@ export default function PADetailPage() {
               </div>
             </div>
 
-            {/* Profile Settings Card */}
             <div className="bg-white shadow rounded-lg p-6">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-lg font-semibold text-gray-900">Settings</h2>
@@ -1117,7 +1132,6 @@ export default function PADetailPage() {
               )}
             </div>
 
-            {/* Stats Card */}
             <div className="bg-white shadow rounded-lg p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Statistics</h2>
               
@@ -1154,7 +1168,7 @@ export default function PADetailPage() {
                   <div className="flex justify-between">
                     <span className="text-sm text-gray-600">Last Worked</span>
                     <span className="text-sm font-semibold text-gray-900">
-                      {new Date(pa.stats.last_worked_date).toLocaleDateString('en-US', {
+                      {parseDate(pa.stats.last_worked_date).toLocaleDateString('en-US', {
                         month: 'short',
                         day: 'numeric',
                       })}
@@ -1165,10 +1179,8 @@ export default function PADetailPage() {
             </div>
           </div>
 
-          {/* Right Column - Shifts */}
           <div className="lg:col-span-2 space-y-6">
             
-            {/* Pending Requests */}
             {pa.pending_requests.length > 0 && (
               <div className="bg-white shadow rounded-lg">
                 <div className="px-6 py-4 border-b border-gray-200">
@@ -1186,7 +1198,6 @@ export default function PADetailPage() {
               </div>
             )}
 
-            {/* Upcoming Shifts */}
             <div className="bg-white shadow rounded-lg">
               <div className="px-6 py-4 border-b border-gray-200">
                 <h2 className="text-lg font-semibold text-gray-900">
@@ -1206,7 +1217,6 @@ export default function PADetailPage() {
               </div>
             </div>
 
-            {/* Recent Shifts */}
             <div className="bg-white shadow rounded-lg">
               <div className="px-6 py-4 border-b border-gray-200">
                 <h2 className="text-lg font-semibold text-gray-900">
@@ -1244,7 +1254,7 @@ function ShiftCard({ shift, status }: { shift: Shift; status: 'pending' | 'upcom
       <div className="flex justify-between items-start">
         <div>
           <p className="text-sm font-semibold text-gray-900">
-            {new Date(shift.date).toLocaleDateString('en-US', {
+            {parseDate(shift.date).toLocaleDateString('en-US', {
               weekday: 'long',
               month: 'long',
               day: 'numeric',
@@ -1272,14 +1282,6 @@ function ShiftCard({ shift, status }: { shift: Shift; status: 'pending' | 'upcom
       </div>
     </div>
   );
-}
-
-function formatTime12Hour(time: string): string {
-  const [hours, minutes] = time.split(':');
-  const hour = parseInt(hours);
-  const ampm = hour >= 12 ? 'PM' : 'AM';
-  const hour12 = hour % 12 || 12;
-  return `${hour12}:${minutes} ${ampm}`;
 }
 ```
 
@@ -1838,6 +1840,10 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { schedulesAPI, SchedulePeriod } from '@/lib/schedules-api';
 
+function parseDate(dateStr: string): Date {
+  return new Date(dateStr + 'T12:00:00');
+}
+
 export default function ManagePeriodsPage() {
   const router = useRouter();
   const { user, isAdmin, loading: authLoading, logout } = useAuth();
@@ -1887,7 +1893,7 @@ export default function ManagePeriodsPage() {
 
   const handleStatusChange = async (id: number, newStatus: string) => {
     try {
-      await schedulesAPI.updatePeriod(id, { status: newStatus });
+      await schedulesAPI.updatePeriodStatus(id, newStatus);
       loadPeriods();
     } catch (err) {
       console.error('Failed to update status:', err);
@@ -1918,7 +1924,6 @@ export default function ManagePeriodsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Navigation Header */}
       <nav className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
@@ -1952,10 +1957,8 @@ export default function ManagePeriodsPage() {
         </div>
       </nav>
 
-      {/* Main Content */}
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 sm:px-0">
-          {/* Periods List */}
           <div className="bg-white shadow overflow-hidden sm:rounded-lg">
             {periods.length === 0 ? (
               <div className="text-center py-12">
@@ -2003,11 +2006,11 @@ export default function ManagePeriodsPage() {
                       <tr key={period.id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm font-medium text-gray-900">{period.name}</div>
-                          <div className="text-xs text-gray-500">Created {new Date(period.created_at).toLocaleDateString()}</div>
+                          <div className="text-xs text-gray-500">Created {parseDate(period.created_at).toLocaleDateString()}</div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900">
-                            {new Date(period.start_date).toLocaleDateString()} - {new Date(period.end_date).toLocaleDateString()}
+                            {parseDate(period.start_date).toLocaleDateString()} - {parseDate(period.end_date).toLocaleDateString()}
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -2050,7 +2053,6 @@ export default function ManagePeriodsPage() {
     </div>
   );
 }
-
 ```
 
 # ==== app/components/CancelShiftModal.tsx ====
@@ -2067,6 +2069,10 @@ interface CancelShiftModalProps {
   onClose: () => void;
   onSuccess: () => void;
   userRole?: 'ADMIN' | 'PA';
+}
+
+function parseDate(dateStr: string): Date {
+  return new Date(dateStr + 'T12:00:00');
 }
 
 export default function CancelShiftModal({
@@ -2108,7 +2114,7 @@ export default function CancelShiftModal({
   };
 
   const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
+    const date = parseDate(dateStr);
     return date.toLocaleDateString('en-US', { 
       weekday: 'long',
       year: 'numeric', 
@@ -2224,6 +2230,10 @@ interface EditShiftModalProps {
   shift: ShiftRequest | null;
   onClose: () => void;
   onSuccess: () => void;
+}
+
+function parseDate(dateStr: string): Date {
+  return new Date(dateStr + 'T12:00:00');
 }
 
 export default function EditShiftModal({
@@ -2422,7 +2432,37 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { suggestionsAPI, ShiftSuggestion } from '@/lib/suggestions-api';
 import { shiftsAPI } from '@/lib/shifts-api';
+import { schedulesAPI } from '@/lib/schedules-api';
 import { getPAColor } from '@/lib/pa-colors';
+
+interface PAStats {
+  upcoming_shifts: number;
+  hours_this_week: number;
+  pending_requests: number;
+  hours_this_month: number;
+}
+
+function parseDate(dateStr: string): Date {
+  return new Date(dateStr + 'T12:00:00');
+}
+
+function isOvernightShift(shift: any): boolean {
+  return shift.end_time < shift.start_time;
+}
+
+function getNextDay(dateStr: string): string {
+  const date = parseDate(dateStr);
+  date.setDate(date.getDate() + 1);
+  return date.toISOString().split('T')[0];
+}
+
+function formatTime12Hour(time: string): string {
+  const [hours, minutes] = time.split(':');
+  const hour = parseInt(hours);
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 || 12;
+  return `${hour12}:${minutes} ${ampm}`;
+}
 
 export default function PADashboard() {
   const router = useRouter();
@@ -2430,6 +2470,14 @@ export default function PADashboard() {
   
   const [suggestions, setSuggestions] = useState<ShiftSuggestion[]>([]);
   const [recentRequests, setRecentRequests] = useState<any[]>([]);
+  const [stats, setStats] = useState<PAStats>({
+    upcoming_shifts: 0,
+    hours_this_week: 0,
+    pending_requests: 0,
+    hours_this_month: 0,
+  });
+  const [calendarData, setCalendarData] = useState<any>(null);
+  const [currentMonth, setCurrentMonth] = useState(new Date());
   const [dataLoading, setDataLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<number | null>(null);
   const [showDeclineModal, setShowDeclineModal] = useState(false);
@@ -2446,7 +2494,7 @@ export default function PADashboard() {
     if (user && user.role === 'PA') {
       loadDashboardData();
     }
-  }, [user]);
+  }, [user, currentMonth]);
 
   const loadDashboardData = async () => {
     try {
@@ -2464,13 +2512,60 @@ export default function PADashboard() {
       setSuggestions(pendingSuggestions);
       
       const allRequests = requestsRes.data.results || requestsRes.data;
-      setRecentRequests(Array.isArray(allRequests) ? allRequests.slice(0, 5) : []);
+      const requestsArray = Array.isArray(allRequests) ? allRequests : [];
+      setRecentRequests(requestsArray.slice(0, 5));
+      
+      const monthData = await schedulesAPI.getMonthView(
+        currentMonth.getFullYear(),
+        currentMonth.getMonth() + 1
+      );
+      setCalendarData(monthData.data);
+      
+      calculateStats(requestsArray);
       
     } catch (err) {
       console.error('Failed to load dashboard data:', err);
     } finally {
       setDataLoading(false);
     }
+  };
+
+  const calculateStats = (requests: any[]) => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    const startOfWeek = new Date(today);
+    startOfWeek.setDate(today.getDate() - today.getDay());
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 6);
+    
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    
+    const approved = requests.filter(r => r.status === 'APPROVED');
+    const pending = requests.filter(r => r.status === 'PENDING');
+    
+    const upcomingShifts = approved.filter(r => parseDate(r.date) >= today);
+    
+    const thisWeekShifts = approved.filter(r => {
+      const shiftDate = parseDate(r.date);
+      return shiftDate >= startOfWeek && shiftDate <= endOfWeek;
+    });
+    
+    const thisMonthShifts = approved.filter(r => {
+      const shiftDate = parseDate(r.date);
+      return shiftDate >= startOfMonth && shiftDate <= endOfMonth;
+    });
+    
+    const hoursThisWeek = thisWeekShifts.reduce((sum, r) => sum + (r.duration_hours || 0), 0);
+    const hoursThisMonth = thisMonthShifts.reduce((sum, r) => sum + (r.duration_hours || 0), 0);
+    
+    setStats({
+      upcoming_shifts: upcomingShifts.length,
+      hours_this_week: hoursThisWeek,
+      pending_requests: pending.length,
+      hours_this_month: hoursThisMonth,
+    });
   };
 
   const handleAcceptSuggestion = async (suggestionId: number) => {
@@ -2509,17 +2604,40 @@ export default function PADashboard() {
     setShowDeclineModal(true);
   };
 
+  const handleDayClick = (date: string) => {
+    router.push(`/schedule?view=week&date=${date}`);
+  };
+
+  const goToPreviousMonth = () => {
+    const newDate = new Date(currentMonth);
+    newDate.setMonth(newDate.getMonth() - 1);
+    setCurrentMonth(newDate);
+  };
+
+  const goToNextMonth = () => {
+    const newDate = new Date(currentMonth);
+    newDate.setMonth(newDate.getMonth() + 1);
+    setCurrentMonth(newDate);
+  };
+
+  const goToToday = () => {
+    setCurrentMonth(new Date());
+  };
+
   if (loading || dataLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p>Loading...</p>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-blue-600 border-r-transparent"></div>
+          <p className="mt-2 text-gray-600">Loading dashboard...</p>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow-sm">
+      <nav className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center">
@@ -2531,7 +2649,7 @@ export default function PADashboard() {
               </span>
               <button
                 onClick={logout}
-                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700"
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 transition"
               >
                 Logout
               </button>
@@ -2540,194 +2658,306 @@ export default function PADashboard() {
         </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="px-4 sm:px-0">
-          
-          <div className="mb-6">
-            <div className="bg-white overflow-hidden shadow rounded-lg">
-              <div className="px-4 py-5 sm:p-6">
-                <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                  Welcome, {user?.first_name}!
-                </h2>
-                <p className="text-gray-600">
-                  Personal Assistant Dashboard - View your approved and pending shifts on the calendar
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {suggestions.length > 0 && (
-            <div className="mb-6">
-              <div className="bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-200 rounded-lg p-6">
-                <div className="flex items-center mb-4">
-                  <span className="text-2xl mr-2">🔔</span>
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    Shift Suggestions ({suggestions.length})
-                  </h3>
-                </div>
-                
-                <div className="space-y-3">
-                  {suggestions.map((suggestion) => (
-                    <div
-                      key={suggestion.id}
-                      className="bg-white rounded-lg p-4 shadow"
-                    >
-                      <div className="flex justify-between items-start mb-3">
-                        <div>
-                          <p className="text-sm font-semibold text-gray-900">
-                            {new Date(suggestion.date).toLocaleDateString('en-US', { 
-                              weekday: 'long',
-                              month: 'long',
-                              day: 'numeric',
-                              year: 'numeric'
-                            })}
-                          </p>
-                          <p className="text-sm text-gray-600">
-                            {formatTime12Hour(suggestion.start_time)} - {formatTime12Hour(suggestion.end_time)} 
-                            <span className="text-gray-500"> ({suggestion.duration_hours} hours)</span>
-                          </p>
-                          <p className="text-xs text-gray-500 mt-1">
-                            Suggested by: {suggestion.suggested_by_name}
-                          </p>
-                        </div>
-                      </div>
-                      
-                      {suggestion.message && (
-                        <div className="mb-3 p-2 bg-gray-50 rounded text-sm text-gray-700 italic">
-                          "{suggestion.message}"
-                        </div>
-                      )}
-                      
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={() => handleAcceptSuggestion(suggestion.id)}
-                          disabled={actionLoading === suggestion.id}
-                          className="flex-1 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded hover:bg-green-700 disabled:opacity-50"
-                        >
-                          {actionLoading === suggestion.id ? 'Processing...' : '✓ Accept'}
-                        </button>
-                        <button
-                          onClick={() => openDeclineModal(suggestion)}
-                          disabled={actionLoading === suggestion.id}
-                          className="flex-1 px-4 py-2 bg-red-600 text-white text-sm font-medium rounded hover:bg-red-700 disabled:opacity-50"
-                        >
-                          ✗ Decline
-                        </button>
-                      </div>
-                      
-                      <p className="text-xs text-gray-500 mt-2">
-                        Note: Accepting creates a shift request that still needs admin approval
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 mb-6">
-            <button
-              onClick={() => router.push('/requests/new')}
-              className="bg-white overflow-hidden shadow rounded-lg hover:shadow-md transition-shadow"
-            >
-              <div className="px-4 py-5 sm:p-6">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0 bg-blue-500 rounded-md p-3">
-                    <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                    </svg>
-                  </div>
-                  <div className="ml-5 text-left">
-                    <h4 className="text-lg font-medium text-gray-900">Request Shift</h4>
-                    <p className="text-sm text-gray-500">Submit new request</p>
-                  </div>
-                </div>
-              </div>
-            </button>
-
-            <button
-              onClick={() => router.push('/requests')}
-              className="bg-white overflow-hidden shadow rounded-lg hover:shadow-md transition-shadow"
-            >
-              <div className="px-4 py-5 sm:p-6">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0 bg-purple-500 rounded-md p-3">
-                    <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                    </svg>
-                  </div>
-                  <div className="ml-5 text-left">
-                    <h4 className="text-lg font-medium text-gray-900">My Requests</h4>
-                    <p className="text-sm text-gray-500">View all requests</p>
-                  </div>
-                </div>
-              </div>
-            </button>
-
-            <button
-              onClick={() => router.push('/schedule')}
-              className="bg-white overflow-hidden shadow rounded-lg hover:shadow-md transition-shadow"
-            >
-              <div className="px-4 py-5 sm:p-6">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0 bg-green-500 rounded-md p-3">
-                    <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                  <div className="ml-5 text-left">
-                    <h4 className="text-lg font-medium text-gray-900">View Schedule</h4>
-                    <p className="text-sm text-gray-500">See approved & pending shifts</p>
-                  </div>
-                </div>
-              </div>
-            </button>
-          </div>
-
-          <div className="bg-white shadow overflow-hidden rounded-lg">
+      <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+        
+        <div className="mb-6">
+          <div className="bg-white overflow-hidden shadow rounded-lg border border-gray-200">
             <div className="px-4 py-5 sm:p-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Recent Requests</h3>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">
+                Welcome, {user?.first_name}!
+              </h2>
+              <p className="text-gray-600">
+                Personal Assistant Dashboard - View your approved and pending shifts
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 mb-8 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="bg-white rounded-lg shadow p-6 border border-gray-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Upcoming Shifts</p>
+                <p className="mt-2 text-3xl font-bold text-blue-600">{stats.upcoming_shifts}</p>
+              </div>
+              <div className="p-3 bg-blue-100 rounded-lg">
+                <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow p-6 border border-gray-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Hours This Week</p>
+                <p className="mt-2 text-3xl font-bold text-green-600">{stats.hours_this_week.toFixed(1)}</p>
+              </div>
+              <div className="p-3 bg-green-100 rounded-lg">
+                <svg className="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow p-6 border border-gray-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Pending Requests</p>
+                <p className="mt-2 text-3xl font-bold text-yellow-600">{stats.pending_requests}</p>
+              </div>
+              <div className="p-3 bg-yellow-100 rounded-lg">
+                <svg className="w-6 h-6 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow p-6 border border-gray-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">This Month Hours</p>
+                <p className="mt-2 text-3xl font-bold text-purple-600">{stats.hours_this_month.toFixed(1)}</p>
+              </div>
+              <div className="p-3 bg-purple-100 rounded-lg">
+                <svg className="w-6 h-6 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+          
+          <div className="lg:col-span-2 bg-white rounded-lg shadow border border-gray-200">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-gray-900">
+                  {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                </h2>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={goToPreviousMonth}
+                    className="p-2 hover:bg-gray-100 rounded-md transition"
+                  >
+                    <svg className="h-5 w-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={goToToday}
+                    className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition"
+                  >
+                    Today
+                  </button>
+                  <button
+                    onClick={goToNextMonth}
+                    className="p-2 hover:bg-gray-100 rounded-md transition"
+                  >
+                    <svg className="h-5 w-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-6">
+              <PACalendar 
+                data={calendarData} 
+                onDayClick={handleDayClick}
+                userId={user?.id}
+              />
+              <p className="mt-4 text-xs text-gray-500 text-center">
+                Click any day to view that week's schedule
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow border border-gray-200">
+            <div className="p-6 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">Recent Requests</h3>
+            </div>
+            <div className="p-6">
               {recentRequests.length === 0 ? (
-                <p className="text-gray-500 text-center py-8">No requests yet</p>
+                <div className="text-center py-8">
+                  <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                  <p className="mt-2 text-sm text-gray-500">No requests yet</p>
+                </div>
               ) : (
                 <div className="space-y-3">
                   {recentRequests.map((request) => (
                     <div
                       key={request.id}
-                      className="flex items-center justify-between p-3 border rounded-lg"
-                      style={{
+                      className="p-3 rounded-lg border-l-4"
+                      style={{ 
                         backgroundColor: getPAColor(request.requested_by) + '10',
-                        borderColor: getPAColor(request.requested_by) + '40',
+                        borderLeftColor: getPAColor(request.requested_by)
                       }}
                     >
-                      <div>
-                        <p className="text-sm font-semibold text-gray-900">
-                          {new Date(request.date).toLocaleDateString('en-US', { 
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric'
-                          })}
-                        </p>
-                        <p className="text-xs text-gray-600">
-                          {formatTime12Hour(request.start_time)} - {formatTime12Hour(request.end_time)}
-                        </p>
+                      <p className="text-sm font-semibold text-gray-900">
+                        {parseDate(request.date).toLocaleDateString('en-US', { 
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric'
+                        })}
+                      </p>
+                      <p className="text-xs text-gray-600 mt-1">
+                        {formatTime12Hour(request.start_time)} - {formatTime12Hour(request.end_time)}
+                      </p>
+                      <div className="flex items-center justify-between mt-2">
+                        <span className="text-xs text-gray-500">{request.duration_hours}h</span>
+                        <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${
+                          request.status === 'APPROVED' ? 'bg-green-100 text-green-800' :
+                          request.status === 'REJECTED' ? 'bg-red-100 text-red-800' :
+                          request.status === 'PENDING' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          {request.status}
+                        </span>
                       </div>
-                      <span className={`px-3 py-1 text-xs font-semibold rounded-full ${
-                        request.status === 'APPROVED' ? 'bg-green-100 text-green-800' :
-                        request.status === 'REJECTED' ? 'bg-red-100 text-red-800' :
-                        request.status === 'PENDING' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-gray-100 text-gray-800'
-                      }`}>
-                        {request.status}
-                      </span>
                     </div>
                   ))}
                 </div>
               )}
             </div>
           </div>
-
         </div>
+
+        {suggestions.length > 0 && (
+          <div className="mb-6">
+            <div className="bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-200 rounded-lg p-6">
+              <div className="flex items-center mb-4">
+                <span className="text-2xl mr-2">🔔</span>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Shift Suggestions ({suggestions.length})
+                </h3>
+              </div>
+              
+              <div className="space-y-3">
+                {suggestions.map((suggestion) => (
+                  <div
+                    key={suggestion.id}
+                    className="bg-white rounded-lg p-4 shadow"
+                  >
+                    <div className="flex justify-between items-start mb-3">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">
+                          {parseDate(suggestion.date).toLocaleDateString('en-US', { 
+                            weekday: 'long',
+                            month: 'long',
+                            day: 'numeric',
+                            year: 'numeric'
+                          })}
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          {formatTime12Hour(suggestion.start_time)} - {formatTime12Hour(suggestion.end_time)} 
+                          <span className="text-gray-500"> ({suggestion.duration_hours} hours)</span>
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Suggested by: {suggestion.suggested_by_name}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    {suggestion.message && (
+                      <div className="mb-3 p-2 bg-gray-50 rounded text-sm text-gray-700 italic">
+                        "{suggestion.message}"
+                      </div>
+                    )}
+                    
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => handleAcceptSuggestion(suggestion.id)}
+                        disabled={actionLoading === suggestion.id}
+                        className="flex-1 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded hover:bg-green-700 disabled:opacity-50"
+                      >
+                        ✓ Accept
+                      </button>
+                      <button
+                        onClick={() => openDeclineModal(suggestion)}
+                        disabled={actionLoading === suggestion.id}
+                        className="flex-1 px-4 py-2 bg-red-600 text-white text-sm font-medium rounded hover:bg-red-700 disabled:opacity-50"
+                      >
+                        ✗ Decline
+                      </button>
+                    </div>
+                    
+                    <p className="text-xs text-gray-500 mt-2">
+                      Note: Accepting creates a shift request that still needs admin approval
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 mb-6">
+          <button
+            onClick={() => router.push('/requests/new')}
+            className="bg-white overflow-hidden shadow rounded-lg hover:shadow-md transition-shadow border border-gray-200"
+          >
+            <div className="px-4 py-5 sm:p-6">
+              <div className="flex items-center">
+                <div className="flex-shrink-0 bg-blue-500 rounded-md p-3">
+                  <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                </div>
+                <div className="ml-5 text-left">
+                  <h4 className="text-lg font-medium text-gray-900">Request Shift</h4>
+                  <p className="text-sm text-gray-500">Submit new request</p>
+                </div>
+              </div>
+            </div>
+          </button>
+
+          <button
+            onClick={() => router.push('/requests')}
+            className="bg-white overflow-hidden shadow rounded-lg hover:shadow-md transition-shadow border border-gray-200"
+          >
+            <div className="px-4 py-5 sm:p-6">
+              <div className="flex items-center">
+                <div className="flex-shrink-0 bg-purple-500 rounded-md p-3">
+                  <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                </div>
+                <div className="ml-5 text-left">
+                  <h4 className="text-lg font-medium text-gray-900">My Requests</h4>
+                  <p className="text-sm text-gray-500">View all requests</p>
+                </div>
+              </div>
+            </div>
+          </button>
+
+          <button
+            onClick={() => router.push('/schedule')}
+            className="bg-white overflow-hidden shadow rounded-lg hover:shadow-md transition-shadow border border-gray-200"
+          >
+            <div className="px-4 py-5 sm:p-6">
+              <div className="flex items-center">
+                <div className="flex-shrink-0 bg-green-500 rounded-md p-3">
+                  <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <div className="ml-5 text-left">
+                  <h4 className="text-lg font-medium text-gray-900">View Schedule</h4>
+                  <p className="text-sm text-gray-500">See approved & pending shifts</p>
+                </div>
+              </div>
+            </div>
+          </button>
+        </div>
+
       </main>
 
       {showDeclineModal && (
@@ -2735,7 +2965,7 @@ export default function PADashboard() {
           <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
             <div className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={() => setShowDeclineModal(false)} />
 
-            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full relative z-10">
               <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Decline Shift Suggestion</h3>
                 
@@ -2779,12 +3009,126 @@ export default function PADashboard() {
   );
 }
 
-function formatTime12Hour(time: string): string {
-  const [hours, minutes] = time.split(':');
-  const hour = parseInt(hours);
-  const ampm = hour >= 12 ? 'PM' : 'AM';
-  const hour12 = hour % 12 || 12;
-  return `${hour12}:${minutes} ${ampm}`;
+function PACalendar({ data, onDayClick, userId }: { data: any; onDayClick: (date: string) => void; userId?: number }) {
+  if (!data || !data.weeks) {
+    return (
+      <div className="text-center py-8 text-gray-500">
+        <p>Loading calendar...</p>
+      </div>
+    );
+  }
+
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  const getShiftsForDay = (dayDate: string, dayShifts: any[]) => {
+    const myShifts = (dayShifts || []).filter((s: any) => s.requested_by === userId);
+    
+    const overnightContinuations: any[] = [];
+    data.weeks.forEach((week: any) => {
+      week.days.forEach((day: any) => {
+        if (day.shifts) {
+          day.shifts.forEach((shift: any) => {
+            if (shift.requested_by === userId && isOvernightShift(shift) && getNextDay(shift.date) === dayDate) {
+              overnightContinuations.push({
+                ...shift,
+                isOvernightContinuation: true
+              });
+            }
+          });
+        }
+      });
+    });
+    
+    return [...myShifts, ...overnightContinuations];
+  };
+
+  return (
+    <div>
+      <div className="grid grid-cols-7 gap-1 mb-2">
+        {dayNames.map((day) => (
+          <div key={day} className="text-center text-xs font-semibold text-gray-600 py-2">
+            {day}
+          </div>
+        ))}
+      </div>
+
+      {data.weeks.map((week: any, weekIndex: number) => (
+        <div key={weekIndex} className="grid grid-cols-7 gap-1 mb-1">
+          {week.days.map((day: any, dayIndex: number) => {
+            const date = parseDate(day.date);
+            const today = new Date();
+            const isToday = 
+              date.getDate() === today.getDate() &&
+              date.getMonth() === today.getMonth() &&
+              date.getFullYear() === today.getFullYear();
+
+            const allShiftsForDay = getShiftsForDay(day.date, day.shifts || []);
+            const hasApproved = allShiftsForDay.some((s: any) => s.status === 'APPROVED' && !s.isOvernightContinuation);
+            const hasPending = allShiftsForDay.some((s: any) => s.status === 'PENDING' && !s.isOvernightContinuation);
+            const hasOvernightStart = allShiftsForDay.some((s: any) => !s.isOvernightContinuation && isOvernightShift(s));
+            const hasOvernightContinuation = allShiftsForDay.some((s: any) => s.isOvernightContinuation);
+
+            let statusColor = 'bg-white border-gray-200';
+            if (hasApproved) {
+              statusColor = 'bg-green-50 border-green-300';
+            } else if (hasPending) {
+              statusColor = 'bg-yellow-50 border-yellow-300';
+            }
+
+            return (
+              <button
+                key={dayIndex}
+                onClick={() => day.is_current_month && onDayClick(day.date)}
+                disabled={!day.is_current_month}
+                className={`aspect-square p-2 text-sm border-2 rounded-lg transition-all ${statusColor} ${
+                  !day.is_current_month 
+                    ? 'text-gray-300 bg-gray-50 border-gray-100 cursor-default' 
+                    : 'hover:shadow-md cursor-pointer'
+                } ${isToday ? 'ring-2 ring-blue-500' : ''}`}
+              >
+                <div className="flex flex-col items-center justify-center h-full">
+                  <span className={`${isToday ? 'text-blue-600 font-bold' : 'text-gray-900'} ${!day.is_current_month ? 'text-gray-300' : ''}`}>
+                    {date.getDate()}
+                  </span>
+                  {day.is_current_month && allShiftsForDay.length > 0 && (
+                    <div className="flex gap-1 mt-1 flex-wrap justify-center">
+                      {hasApproved && (
+                        <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
+                      )}
+                      {hasPending && (
+                        <div className="w-1.5 h-1.5 bg-yellow-500 rounded-full"></div>
+                      )}
+                      {hasOvernightStart && (
+                        <div className="w-1.5 h-1.5 bg-purple-500 rounded-full"></div>
+                      )}
+                      {hasOvernightContinuation && (
+                        <div className="w-1.5 h-1.5 bg-purple-300 rounded-full"></div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      ))}
+
+      <div className="mt-4 flex items-center justify-center space-x-4 text-xs text-gray-600">
+        <div className="flex items-center space-x-1.5">
+          <div className="w-3 h-3 bg-green-50 border-2 border-green-300 rounded"></div>
+          <span>Approved</span>
+        </div>
+        <div className="flex items-center space-x-1.5">
+          <div className="w-3 h-3 bg-yellow-50 border-2 border-yellow-300 rounded"></div>
+          <span>Pending</span>
+        </div>
+        <div className="flex items-center space-x-1.5">
+          <div className="w-1.5 h-1.5 bg-purple-500 rounded-full"></div>
+          <span>Overnight</span>
+        </div>
+      </div>
+    </div>
+  );
 }
 ```
 
@@ -3343,6 +3687,10 @@ import { useAuth } from '@/lib/auth-context';
 import { schedulesAPI, SchedulePeriod } from '@/lib/schedules-api';
 import { shiftsAPI } from '@/lib/shifts-api';
 
+function parseDate(dateStr: string): Date {
+  return new Date(dateStr + 'T12:00:00');
+}
+
 export default function NewShiftRequestPage() {
   const router = useRouter();
   const { user, isPA, loading: authLoading, logout } = useAuth();
@@ -3399,7 +3747,6 @@ export default function NewShiftRequestPage() {
     setError('');
     setLoading(true);
 
-    // Log what we're sending
     const requestData = {
       schedule_period: parseInt(formData.schedule_period),
       date: formData.date,
@@ -3411,7 +3758,7 @@ export default function NewShiftRequestPage() {
     console.log('📤 Sending shift request:', requestData);
 
     try {
-      const response = await shiftsAPI.createShiftRequest(requestData);
+      const response = await shiftsAPI.createRequest(requestData);
       console.log('✅ Success:', response.data);
       
       setSuccess(true);
@@ -3422,13 +3769,11 @@ export default function NewShiftRequestPage() {
       console.error('❌ Failed to create request:', err);
       console.error('📋 Full error:', err.response);
       
-      // Show detailed error from backend
       if (err.response?.data) {
         const errorData = err.response.data;
         console.log('🔍 Backend error details:', errorData);
         
         if (typeof errorData === 'object') {
-          // Format all validation errors
           const errorMessages = Object.entries(errorData)
             .map(([field, messages]) => {
               if (Array.isArray(messages)) {
@@ -3496,7 +3841,6 @@ export default function NewShiftRequestPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      {/* Navigation Header */}
       <nav className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
@@ -3524,10 +3868,8 @@ export default function NewShiftRequestPage() {
         </div>
       </nav>
 
-      {/* Main Content */}
       <main className="max-w-3xl mx-auto py-8 sm:px-6 lg:px-8">
         <div className="px-4 sm:px-0">
-          {/* Info Box */}
           <div className="mb-6 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg shadow-lg p-6 text-white">
             <div className="flex items-start">
               <div className="flex-shrink-0">
@@ -3547,7 +3889,6 @@ export default function NewShiftRequestPage() {
             </div>
           </div>
 
-          {/* Form */}
           <div className="bg-white shadow-xl rounded-lg overflow-hidden">
             <form onSubmit={handleSubmit} className="space-y-6 p-6">
               {error && (
@@ -3576,7 +3917,6 @@ export default function NewShiftRequestPage() {
                 </div>
               ) : (
                 <>
-                  {/* Schedule Period */}
                   <div>
                     <label htmlFor="schedule_period" className="block text-sm font-semibold text-gray-700 mb-2">
                       Schedule Period *
@@ -3590,13 +3930,12 @@ export default function NewShiftRequestPage() {
                     >
                       {periods.map((period) => (
                         <option key={period.id} value={period.id}>
-                          {period.name} ({new Date(period.start_date).toLocaleDateString()} - {new Date(period.end_date).toLocaleDateString()})
+                          {period.name} ({parseDate(period.start_date).toLocaleDateString()} - {parseDate(period.end_date).toLocaleDateString()})
                         </option>
                       ))}
                     </select>
                   </div>
 
-                  {/* Date - Clickable wrapper */}
                   <div>
                     <label htmlFor="date" className="block text-sm font-semibold text-gray-700 mb-2">
                       Shift Date * <span className="text-xs font-normal text-gray-500">(Click anywhere to select date)</span>
@@ -3620,9 +3959,7 @@ export default function NewShiftRequestPage() {
                     </div>
                   </div>
 
-                  {/* Time Inputs Side by Side */}
                   <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                    {/* Start Time - Clickable wrapper */}
                     <div>
                       <label htmlFor="start_time" className="block text-sm font-semibold text-gray-700 mb-2">
                         Start Time * <span className="text-xs font-normal text-gray-500">(Click to select)</span>
@@ -3644,7 +3981,6 @@ export default function NewShiftRequestPage() {
                       </div>
                     </div>
 
-                    {/* End Time - Clickable wrapper */}
                     <div>
                       <label htmlFor="end_time" className="block text-sm font-semibold text-gray-700 mb-2">
                         End Time * <span className="text-xs font-normal text-gray-500">(Click to select)</span>
@@ -3667,7 +4003,6 @@ export default function NewShiftRequestPage() {
                     </div>
                   </div>
 
-                  {/* Duration Display */}
                   {formData.start_time && formData.end_time && (
                     <div className={`rounded-lg p-4 ${isOvernight ? 'bg-purple-50 border-2 border-purple-300' : 'bg-blue-50 border-2 border-blue-300'}`}>
                       <div className="flex items-center justify-between">
@@ -3694,7 +4029,6 @@ export default function NewShiftRequestPage() {
                     </div>
                   )}
 
-                  {/* Notes */}
                   <div>
                     <label htmlFor="notes" className="block text-sm font-semibold text-gray-700 mb-2">
                       Notes (Optional)
@@ -3709,7 +4043,6 @@ export default function NewShiftRequestPage() {
                     />
                   </div>
 
-                  {/* Submit Button */}
                   <div className="flex space-x-3 pt-4">
                     <button
                       type="submit"
@@ -3771,7 +4104,6 @@ function calculateDuration(startTime: string, endTime: string): { hours: number;
   
   return { hours: totalHours, isOvernight };
 }
-
 ```
 
 # ==== app/requests/page.tsx ====
@@ -3785,6 +4117,10 @@ import { useAuth } from '@/lib/auth-context';
 import { shiftsAPI, ShiftRequest } from '@/lib/shifts-api';
 
 type TabType = 'pending' | 'approved' | 'rejected';
+
+function parseDate(dateStr: string): Date {
+  return new Date(dateStr + 'T12:00:00');
+}
 
 export default function RequestsPage() {
   const router = useRouter();
@@ -3823,7 +4159,7 @@ export default function RequestsPage() {
         requestsList = requestsList.filter(r => r.requested_by === user?.id);
       }
       
-      requestsList.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      requestsList.sort((a, b) => parseDate(a.date).getTime() - parseDate(b.date).getTime());
       
       setRequests(requestsList);
     } catch (err) {
@@ -3935,7 +4271,7 @@ export default function RequestsPage() {
   };
 
   const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
+    const date = parseDate(dateStr);
     const today = new Date();
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
@@ -3955,7 +4291,7 @@ export default function RequestsPage() {
   };
 
   const isUrgent = (dateStr: string) => {
-    const date = new Date(dateStr);
+    const date = parseDate(dateStr);
     const today = new Date();
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
@@ -3971,7 +4307,6 @@ export default function RequestsPage() {
   const getFilteredRequests = () => {
     let filtered = requests;
 
-    // Filter by tab
     if (activeTab === 'pending') {
       filtered = filtered.filter(r => r.status === 'PENDING');
     } else if (activeTab === 'approved') {
@@ -3980,12 +4315,11 @@ export default function RequestsPage() {
       filtered = filtered.filter(r => r.status === 'REJECTED' || r.status === 'CANCELLED');
     }
 
-    // Filter by search query
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(r => {
         const paName = r.requested_by_name?.toLowerCase() || '';
-        const date = new Date(r.date).toLocaleDateString('en-US').toLowerCase();
+        const date = parseDate(r.date).toLocaleDateString('en-US').toLowerCase();
         const notes = r.notes?.toLowerCase() || '';
         const period = r.schedule_period_name?.toLowerCase() || '';
         
@@ -4018,7 +4352,6 @@ export default function RequestsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Toast Notification */}
       {toast && (
         <div className="fixed top-4 right-4 z-50 animate-slide-in-right">
           <div className={`rounded-lg shadow-lg p-4 ${
@@ -4038,7 +4371,6 @@ export default function RequestsPage() {
         </div>
       )}
 
-      {/* Navigation */}
       <nav className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
@@ -4076,10 +4408,8 @@ export default function RequestsPage() {
         </div>
       </nav>
 
-      {/* Main Content */}
       <main className="max-w-6xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
         
-        {/* Tabs and Search */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
           <div className="border-b border-gray-200">
             <div className="flex items-center justify-between px-6 pt-4">
@@ -4175,7 +4505,6 @@ export default function RequestsPage() {
             </div>
           </div>
 
-          {/* Search Bar */}
           <div className="p-4 border-b border-gray-200 bg-gray-50">
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -4209,7 +4538,6 @@ export default function RequestsPage() {
           </div>
         </div>
 
-        {/* Tab Content */}
         <div className="space-y-3">
           {filteredRequests.length === 0 ? (
             <div className="bg-white rounded-lg shadow-sm border-2 border-dashed border-gray-300 p-12 text-center">
@@ -4448,6 +4776,10 @@ import CancelShiftModal from '@/app/components/CancelShiftModal';
 import { shiftsAPI } from '@/lib/shifts-api';
 import { api } from '@/lib/api';
 
+function parseDate(dateStr: string): Date {
+  return new Date(dateStr + 'T12:00:00');
+}
+
 function formatTime12Hour(time24: string): string {
   const [hours, minutes] = time24.split(':').map(Number);
   const period = hours >= 12 ? 'PM' : 'AM';
@@ -4459,6 +4791,22 @@ function formatHour12(hour: number): string {
   const period = hour >= 12 ? 'PM' : 'AM';
   const hours12 = hour % 12 || 12;
   return `${hours12}:00 ${period}`;
+}
+
+function isOvernightShift(shift: any): boolean {
+  return shift.end_time < shift.start_time;
+}
+
+function getNextDay(dateStr: string): string {
+  const date = parseDate(dateStr);
+  date.setDate(date.getDate() + 1);
+  return date.toISOString().split('T')[0];
+}
+
+function getPreviousDay(dateStr: string): string {
+  const date = parseDate(dateStr);
+  date.setDate(date.getDate() - 1);
+  return date.toISOString().split('T')[0];
 }
 
 export default function SchedulePage() {
@@ -4504,7 +4852,7 @@ export default function SchedulePage() {
       
       if (dateParam) {
         try {
-          const parsedDate = new Date(dateParam);
+          const parsedDate = parseDate(dateParam);
           if (!isNaN(parsedDate.getTime())) {
             setCurrentDate(parsedDate);
           }
@@ -4628,12 +4976,12 @@ export default function SchedulePage() {
   };
 
   const handleMonthDayClick = (date: string) => {
-    setCurrentDate(new Date(date));
+    setCurrentDate(parseDate(date));
     setViewType('week');
   };
 
   const handleWeekDayClick = (date: string) => {
-    setCurrentDate(new Date(date));
+    setCurrentDate(parseDate(date));
     setViewType('day');
   };
 
@@ -4953,7 +5301,7 @@ function MonthView({ data, onDayClick, onShiftClick, isAdmin, currentUserId }: {
       <div className="grid grid-cols-7">
         {data.weeks?.map((week: any, weekIdx: number) =>
           week.days?.map((day: any, dayIdx: number) => {
-            const date = new Date(day.date);
+            const date = parseDate(day.date);
             const isToday = date.toDateString() === new Date().toDateString();
             const coverageStatus = getCoverageStatus(day.coverage);
             const shifts = day.shifts || [];
@@ -4989,6 +5337,7 @@ function MonthView({ data, onDayClick, onShiftClick, isAdmin, currentUserId }: {
                     const color = getPAColor(paId);
                     const isPending = shift.status === 'PENDING';
                     const isClickable = isShiftClickable(shift);
+                    const overnight = isOvernightShift(shift);
 
                     return (
                       <div
@@ -5014,10 +5363,11 @@ function MonthView({ data, onDayClick, onShiftClick, isAdmin, currentUserId }: {
                           backgroundColor: color,
                           color: '#fff',
                         }}
-                        title={`${paName}: ${formatTime12Hour(shift.start_time)} - ${formatTime12Hour(shift.end_time)} ${isPending ? '(PENDING - Click to approve/reject)' : isClickable ? '(Click to manage)' : ''}`}
+                        title={`${paName}: ${formatTime12Hour(shift.start_time)} - ${formatTime12Hour(shift.end_time)}${overnight ? ' (overnight)' : ''} ${isPending ? '(PENDING - Click to approve/reject)' : isClickable ? '(Click to manage)' : ''}`}
                       >
                         <span className="font-medium">
                           {isPending && '⏳ '}
+                          {overnight && '🌙 '}
                           {initials}
                         </span>
                         <span className="hidden sm:inline ml-1 opacity-90">{formatTime12Hour(shift.start_time).replace(' ', '')}</span>
@@ -5046,6 +5396,10 @@ function MonthView({ data, onDayClick, onShiftClick, isAdmin, currentUserId }: {
           <span className="text-gray-700">Pending</span>
         </div>
         <div className="flex items-center space-x-2">
+          <span className="text-base">🌙</span>
+          <span className="text-gray-700">Overnight</span>
+        </div>
+        <div className="flex items-center space-x-2">
           <div className="h-3 border-l-4 border-green-500 pl-2"></div>
           <span className="text-gray-700">Full Coverage</span>
         </div>
@@ -5064,161 +5418,235 @@ function MonthView({ data, onDayClick, onShiftClick, isAdmin, currentUserId }: {
 
 function WeekView({ 
   data, 
-  onDayClick, 
-  onSuggestShift, 
+  onDayClick,
+  onSuggestShift,
   onShiftClick,
   onPARequest,
-  isAdmin, 
-  currentUserId 
+  isAdmin,
+  currentUserId
 }: { 
   data: any; 
-  onDayClick: (date: string) => void; 
-  onSuggestShift: (date: string, startTime?: string, endTime?: string) => void; 
+  onDayClick?: (date: string) => void;
+  onSuggestShift?: (date?: string, startTime?: string, endTime?: string) => void;
   onShiftClick: (shift: any) => void;
-  onPARequest: (date: string, startTime: string, endTime: string) => void;
-  isAdmin?: boolean; 
-  currentUserId?: number 
+  onPARequest?: (date: string, startTime: string, endTime: string) => void;
+  isAdmin?: boolean;
+  currentUserId?: number;
 }) {
-  const hours = Array.from({ length: 24 }, (_, i) => i);
-  const days = data.days || [];
+  if (!data || !data.days) {
+    return <div className="text-center py-12 text-gray-500">Loading...</div>;
+  }
 
-  const isShiftClickable = (shift: any): boolean => {
-    if (shift.status === 'PENDING' && isAdmin) return true;
-    if (shift.status === 'APPROVED' && isAdmin) return true;
-    if (shift.status === 'APPROVED' && shift.requested_by === currentUserId) return true;
-    return false;
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const hours = Array.from({ length: 24 }, (_, i) => i);
+
+  const isOvernightShift = (shift: any): boolean => {
+    return shift.end_time < shift.start_time;
   };
 
-  const handleCellClick = (date: string, hour: number) => {
-    const startTime = `${hour.toString().padStart(2, '0')}:00`;
-    const endHour = hour + 3;
-    const endTime = `${endHour.toString().padStart(2, '0')}:00`;
+  const getNextDayDate = (dateStr: string): string => {
+    const date = parseDate(dateStr);
+    date.setDate(date.getDate() + 1);
+    return date.toISOString().split('T')[0];
+  };
+
+  const getShiftsCoveringHour = (dayDate: string, hour: number, dayShifts: any[]) => {
+    const allShifts: any[] = [];
     
-    if (isAdmin) {
-      onSuggestShift(date, startTime, endTime);
-    } else {
-      onPARequest(date, startTime, endTime);
+    (dayShifts || []).forEach(shift => {
+      const [startHour] = shift.start_time.split(':').map(Number);
+      const [endHour] = shift.end_time.split(':').map(Number);
+
+      if (isOvernightShift(shift)) {
+        if (hour >= startHour) {
+          allShifts.push(shift);
+        }
+      } else {
+        if (hour >= startHour && hour < endHour) {
+          allShifts.push(shift);
+        }
+      }
+    });
+
+    data.days.forEach((day: any) => {
+      if (day.date !== dayDate) {
+        (day.shifts || []).forEach((shift: any) => {
+          if (isOvernightShift(shift) && getNextDayDate(shift.date) === dayDate) {
+            const [endHour] = shift.end_time.split(':').map(Number);
+            if (hour < endHour) {
+              allShifts.push({
+                ...shift,
+                isOvernightContinuation: true,
+                originalDate: shift.date
+              });
+            }
+          }
+        });
+      }
+    });
+
+    return allShifts;
+  };
+
+  const getShiftHeight = (shift: any, currentHour: number): number => {
+    const [startHour, startMin] = shift.start_time.split(':').map(Number);
+    const [endHour, endMin] = shift.end_time.split(':').map(Number);
+
+    if (shift.isOvernightContinuation) {
+      if (currentHour === 0) {
+        return Math.min(endHour * 60 + endMin, 60);
+      } else if (currentHour < endHour) {
+        return 60;
+      } else if (currentHour === endHour) {
+        return endMin;
+      }
+      return 0;
     }
+
+    if (isOvernightShift(shift)) {
+      if (currentHour >= startHour) {
+        if (currentHour === startHour) {
+          return 60 - startMin;
+        }
+        return 60;
+      }
+      return 0;
+    }
+
+    if (currentHour === startHour && currentHour === endHour - 1) {
+      return (endHour * 60 + endMin) - (startHour * 60 + startMin);
+    } else if (currentHour === startHour) {
+      return 60 - startMin;
+    } else if (currentHour === endHour - 1) {
+      return endMin || 60;
+    } else if (currentHour > startHour && currentHour < endHour - 1) {
+      return 60;
+    }
+
+    return 60;
+  };
+
+  const getShiftTopOffset = (shift: any, currentHour: number): number => {
+    const [startHour, startMin] = shift.start_time.split(':').map(Number);
+
+    if (shift.isOvernightContinuation) {
+      return 0;
+    }
+
+    if (currentHour === startHour) {
+      return startMin;
+    }
+
+    return 0;
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-      <div className="grid grid-cols-8 border-b border-gray-200 bg-gray-50">
-        <div className="p-3 text-xs sm:text-sm font-semibold text-gray-700 border-r border-gray-200">
-          Time
-        </div>
-        {days.map((day: any) => {
-          const date = new Date(day.date);
-          const isToday = date.toDateString() === new Date().toDateString();
-          return (
-            <div
-              key={day.date}
-              className={`p-2 text-center cursor-pointer hover:bg-gray-100 transition-colors ${isToday ? 'bg-blue-50' : ''}`}
-              onClick={() => onDayClick(day.date)}
-            >
-              <div className="text-xs text-gray-600">
-                {date.toLocaleDateString('en-US', { weekday: 'short' })}
-              </div>
-              <div className={`text-sm sm:text-base font-bold ${isToday ? 'text-blue-600' : 'text-gray-900'}`}>
-                {date.getDate()}
-              </div>
+    <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
+      <div className="overflow-x-auto">
+        <div className="inline-block min-w-full align-middle">
+          <div className="grid grid-cols-[80px_repeat(7,minmax(120px,1fr))] border-b border-gray-200">
+            <div className="sticky left-0 bg-gray-50 border-r border-gray-200 p-3 font-semibold text-sm text-gray-700 z-10">
+              Time
             </div>
-          );
-        })}
-      </div>
+            {data.days.map((day: any, idx: number) => {
+              const date = parseDate(day.date);
+              const today = new Date();
+              const isToday = 
+                date.getDate() === today.getDate() &&
+                date.getMonth() === today.getMonth() &&
+                date.getFullYear() === today.getFullYear();
 
-      <div className="relative">
-        {hours.map((hour) => {
-          const isCriticalTime = (hour >= 6 && hour < 9) || (hour >= 21 && hour < 22);
-          
-          return (
-            <div
-              key={hour}
-              className={`grid grid-cols-8 border-b border-gray-100 ${
-                isCriticalTime ? 'bg-yellow-50/30' : ''
-              }`}
-            >
-              <div className="p-2 text-xs text-gray-500 font-medium">
-                {formatHour12(hour)}
-              </div>
-
-              {days.map((day: any) => {
-                const shiftsStartingThisHour = (day.shifts || []).filter((shift: any) => {
-                  const startHour = parseInt(shift.start_time.split(':')[0]);
-                  return hour === startHour;
-                });
-
-                const hasShift = shiftsStartingThisHour.length > 0;
-
-                return (
-                  <div 
-                    key={`${day.date}-${hour}`} 
-                    className={`relative p-1 min-h-[3rem] ${!hasShift ? 'cursor-pointer hover:bg-blue-50 transition-colors' : ''}`}
-                    onClick={() => !hasShift && handleCellClick(day.date, hour)}
-                    title={!hasShift ? (isAdmin ? 'Click to suggest shift' : 'Click to request shift') : ''}
-                  >
-                    {shiftsStartingThisHour.map((shift: any) => {
-                      const paName = shift.requested_by_name || shift.requested_by || 'Unknown';
-                      const paId = shift.requested_by || shift.id;
-                      const color = getPAColor(paId);
-                      const isPending = shift.status === 'PENDING';
-                      const isClickable = isShiftClickable(shift);
-
-                      return (
-                        <div
-                          key={shift.id}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (isClickable) {
-                              onShiftClick(shift);
-                            }
-                          }}
-                          className={`absolute inset-x-1 rounded px-2 py-1 text-xs font-medium shadow-sm z-10 flex flex-col justify-between transition-all ${
-                            isPending 
-                              ? 'border-2 border-dashed cursor-pointer hover:scale-105' 
-                              : isClickable
-                              ? 'text-white cursor-pointer hover:opacity-80'
-                              : 'text-white'
-                          }`}
-                          style={isPending ? {
-                            backgroundColor: color + '30',
-                            borderColor: color,
-                            color: color,
-                            top: '0.25rem',
-                            height: `${Number(shift.duration_hours) * 3}rem`,
-                          } : {
-                            backgroundColor: color,
-                            color: '#fff',
-                            top: '0.25rem',
-                            height: `${Number(shift.duration_hours) * 3}rem`,
-                          }}
-                          title={`${paName}: ${formatTime12Hour(shift.start_time)} - ${formatTime12Hour(shift.end_time)} ${isPending ? '(PENDING)' : isClickable ? '(Click to manage)' : ''}`}
-                        >
-                          <div>
-                            <div className="font-semibold truncate">
-                              {isPending && '⏳ '}
-                              {paName}
-                            </div>
-                            <div className="text-xs opacity-90">{formatTime12Hour(shift.start_time)}</div>
-                          </div>
-                          <div className="text-xs opacity-90 text-right">{formatTime12Hour(shift.end_time)}</div>
-                        </div>
-                      );
-                    })}
+              return (
+                <div
+                  key={idx}
+                  className={`p-3 text-center border-r border-gray-200 ${
+                    isToday ? 'bg-blue-50' : 'bg-gray-50'
+                  }`}
+                >
+                  <div className={`font-semibold text-sm ${isToday ? 'text-blue-600' : 'text-gray-900'}`}>
+                    {dayNames[date.getDay()]}
                   </div>
-                );
-              })}
-            </div>
-          );
-        })}
-      </div>
+                  <div className={`text-xs mt-1 ${isToday ? 'text-blue-600 font-bold' : 'text-gray-500'}`}>
+                    {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
 
-      <div className="border-t border-gray-200 bg-blue-50 px-4 py-3">
-        <p className="text-sm text-blue-800">
-          💡 <strong>Tip:</strong> {isAdmin 
-            ? 'Click on any empty time slot to suggest a shift for that time' 
-            : 'Click on any empty time slot to request a shift for that time'}
-        </p>
+          <div className="relative">
+            {hours.map((hour) => (
+              <div
+                key={hour}
+                className="grid grid-cols-[80px_repeat(7,minmax(120px,1fr))] border-b border-gray-100"
+                style={{ minHeight: '60px' }}
+              >
+                <div className="sticky left-0 bg-white border-r border-gray-200 p-2 text-xs text-gray-500 z-10">
+                  {hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`}
+                </div>
+
+                {data.days.map((day: any, dayIdx: number) => {
+                  const shiftsInHour = getShiftsCoveringHour(day.date, hour, day.shifts || []);
+                  
+                  return (
+                    <div
+                      key={dayIdx}
+                      className="relative border-r border-gray-100 hover:bg-gray-50 transition-colors"
+                      style={{ minHeight: '60px' }}
+                    >
+                      {shiftsInHour.map((shift, shiftIdx) => {
+                        const height = getShiftHeight(shift, hour);
+                        const topOffset = getShiftTopOffset(shift, hour);
+                        
+                        if (height === 0) return null;
+
+                        const isFirstSegment = shift.isOvernightContinuation 
+                          ? hour === 0
+                          : hour === parseInt(shift.start_time.split(':')[0]);
+
+                        return (
+                          <div
+                            key={`${shift.id}-${shiftIdx}`}
+                            onClick={() => onShiftClick(shift)}
+                            className="absolute inset-x-0 px-1 cursor-pointer group"
+                            style={{
+                              top: `${topOffset}px`,
+                              height: `${height}px`,
+                            }}
+                          >
+                            <div
+                              className="h-full rounded shadow-sm border-l-4 p-1.5 overflow-hidden transition-all group-hover:shadow-md"
+                              style={{
+                                backgroundColor: getPAColor(shift.requested_by) + '20',
+                                borderLeftColor: getPAColor(shift.requested_by),
+                              }}
+                            >
+                              {isFirstSegment && (
+                                <div className="text-xs">
+                                  <div className="font-semibold text-gray-900 truncate">
+                                    {shift.pa_name}
+                                  </div>
+                                  <div className="text-gray-600 text-[10px]">
+                                    {formatTime12Hour(shift.start_time)}
+                                    {shift.isOvernightContinuation && (
+                                      <span className="ml-1 text-purple-600">
+                                        (from {parseDate(shift.originalDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -5254,6 +5682,11 @@ function DayView({
       const startHour = parseInt(shift.start_time.split(':')[0]);
       const endHour = parseInt(shift.end_time.split(':')[0]);
       const endMinute = parseInt(shift.end_time.split(':')[1]);
+      const overnight = isOvernightShift(shift);
+      
+      if (overnight) {
+        return startHour <= hour || (endHour > hour || (endHour === hour && endMinute > 0));
+      }
       
       return startHour <= hour && (endHour > hour || (endHour === hour && endMinute > 0));
     });
@@ -5334,6 +5767,7 @@ function DayView({
                   const color = getPAColor(paId);
                   const isPending = shift.status === 'PENDING';
                   const isClickable = isShiftClickable(shift);
+                  const overnight = isOvernightShift(shift);
 
                   return (
                     <div
@@ -5369,8 +5803,10 @@ function DayView({
                       <div>
                         <div className="font-bold text-base">
                           {isPending && '⏳ '}
+                          {overnight && '🌙 '}
                           {paName}
                           {isPending && <span className="ml-2 text-xs font-normal">(Pending)</span>}
+                          {overnight && <span className="ml-2 text-xs font-normal">(Overnight)</span>}
                         </div>
                         <div className="text-sm opacity-90 mt-1">{formatTime12Hour(shift.start_time)}</div>
                       </div>
@@ -5412,40 +5848,18 @@ function ApproveRejectModal({ isOpen, shift, onClose, onSuccess }: { isOpen: boo
   const handleApprove = async () => {
     if (!shift) return;
     
-    console.log('🚀 Attempting to approve shift:', {
-      shiftId: shift.id,
-      adminNotes,
-      userRole: localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user') || '{}').role : 'unknown',
-      hasToken: !!localStorage.getItem('access_token')
-    });
-    
     setLoading(true);
     
     try {
-      const response = await shiftsAPI.approveRequest(shift.id, adminNotes);
-      console.log('✅ Approve successful:', response.data);
+      await shiftsAPI.approveRequest(shift.id, adminNotes);
       onSuccess();
     } catch (err: any) {
-      console.error('❌ Approve failed:', {
-        status: err.response?.status,
-        statusText: err.response?.statusText,
-        data: err.response?.data,
-        message: err.message,
-        config: {
-          url: err.config?.url,
-          method: err.config?.method,
-          headers: err.config?.headers
-        }
-      });
+      console.error('❌ Approve failed:', err);
       
       if (err.response?.data?.error) {
         alert(`Error: ${err.response.data.error}`);
       } else if (err.response?.data?.detail) {
         alert(`Error: ${err.response.data.detail}`);
-      } else if (err.response?.status === 403) {
-        alert('Access Denied: You do not have permission to approve shifts. Please check if you are logged in as an admin.');
-      } else if (err.response?.status === 401) {
-        alert('Authentication Error: Your session may have expired. Please try logging in again.');
       } else {
         alert(`Failed to approve shift: ${err.message}`);
       }
@@ -5460,23 +5874,13 @@ function ApproveRejectModal({ isOpen, shift, onClose, onSuccess }: { isOpen: boo
       return;
     }
     
-    console.log('🚀 Attempting to reject shift:', {
-      shiftId: shift.id,
-      rejectedReason
-    });
-    
     setLoading(true);
     
     try {
-      const response = await shiftsAPI.rejectRequest(shift.id, rejectedReason);
-      console.log('✅ Reject successful:', response.data);
+      await shiftsAPI.rejectRequest(shift.id, rejectedReason);
       onSuccess();
     } catch (err: any) {
-      console.error('❌ Reject failed:', {
-        status: err.response?.status,
-        data: err.response?.data,
-        message: err.message
-      });
+      console.error('❌ Reject failed:', err);
       
       if (err.response?.data?.error) {
         alert(`Error: ${err.response.data.error}`);
@@ -5494,7 +5898,7 @@ function ApproveRejectModal({ isOpen, shift, onClose, onSuccess }: { isOpen: boo
 
   return (
     <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4 z-[9998]">
-      <div className="bg-white rounded-lg max-w-lg w-full shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full relative z-[9999]">
+      <div className="bg-white rounded-lg max-w-lg w-full shadow-xl relative z-[9999]">
         <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">
             {mode === 'choose' && 'Review Shift Request'}
@@ -5504,7 +5908,7 @@ function ApproveRejectModal({ isOpen, shift, onClose, onSuccess }: { isOpen: boo
 
           <div className="mb-4 p-4 bg-gray-50 rounded-lg">
             <p className="text-sm font-medium text-gray-900">PA: {shift.requested_by_name}</p>
-            <p className="text-sm text-gray-600">Date: {new Date(shift.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</p>
+            <p className="text-sm text-gray-600">Date: {parseDate(shift.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</p>
             <p className="text-sm text-gray-600">Time: {formatTime12Hour(shift.start_time)} - {formatTime12Hour(shift.end_time)} ({shift.duration_hours}h)</p>
             {shift.notes && (
               <p className="text-sm text-gray-600 mt-2 italic">Notes: "{shift.notes}"</p>
@@ -6115,7 +6519,6 @@ export const pasAPI = {
 ```
 import { api } from './api';
 
-// Paginated response from Django REST Framework
 export interface PaginatedResponse<T> {
   count: number;
   next: string | null;
@@ -6143,29 +6546,25 @@ export interface CreateSchedulePeriod {
 }
 
 export const schedulesAPI = {
-  // List all periods - returns paginated response
   listPeriods: () => api.get<PaginatedResponse<SchedulePeriod>>('/api/schedule-periods/'),
   
-  // Get single period details
   getPeriod: (id: number) => api.get(`/api/schedule-periods/${id}/`),
   
-  // Create new period (admin only)
   createPeriod: (data: CreateSchedulePeriod) => 
     api.post('/api/schedule-periods/', data),
   
-  // Update period (admin only)
   updatePeriod: (id: number, data: Partial<CreateSchedulePeriod>) => 
     api.patch(`/api/schedule-periods/${id}/`, data),
   
-  // Delete period (admin only)
+  updatePeriodStatus: (id: number, status: string) =>
+    api.patch(`/api/schedule-periods/${id}/`, { status }),
+  
   deletePeriod: (id: number) => 
     api.delete(`/api/schedule-periods/${id}/`),
   
-  // Finalize period (admin only)
   finalizePeriod: (id: number) => 
     api.post(`/api/schedule-periods/${id}/finalize/`),
   
-  // Calendar views
   getMonthView: (year: number, month: number, paId?: number) => {
     const params = paId ? `?pa_id=${paId}` : '';
     return api.get(`/api/calendar/month/${year}/${month}/${params}`);

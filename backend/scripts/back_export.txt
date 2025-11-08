@@ -1,6 +1,6 @@
 # TOTETAXI - BACKEND CODE SNAPSHOT
 # AUTO-GENERATED - CODE FILES ONLY
-# Created: 2025-11-07 12:33:26
+# Created: 2025-11-08 17:16:49
 # Total files: 88
 # 🔒 SECURITY: .env files excluded (contain secrets)
 # 📋 INCLUDES: All Django apps, migrations, configuration
@@ -553,7 +553,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 # Internationalization
 LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'America/New_York'
 USE_I18N = True
 USE_TZ = True
 
@@ -1260,38 +1260,45 @@ def calculate_critical_coverage(date):
     - Morning: 6:00 AM - 9:00 AM (must cover full 3 hours)
     - Evening: 9:00 PM - 10:00 PM (must cover full 1 hour)
     
+    Handles overnight shifts correctly (when end_time < start_time).
+    
     Args:
         date: datetime.date object
     
     Returns:
         CriticalTimeCoverage instance
     """
-    # Get or create coverage record
     coverage, created = CriticalTimeCoverage.objects.get_or_create(date=date)
     
-    # Get all approved shifts for this date
     shifts = ShiftRequest.objects.filter(
         date=date,
         status='APPROVED'
     )
     
-    # Reset coverage
     coverage.morning_covered = False
     coverage.evening_covered = False
     coverage.morning_shift = None
     coverage.evening_shift = None
     
-    # Check each shift
     for shift in shifts:
-        # Morning coverage: shift must start at or before 6 AM and end at or after 9 AM
-        if shift.start_time <= time(6, 0) and shift.end_time >= time(9, 0):
-            coverage.morning_covered = True
-            coverage.morning_shift = shift
+        is_overnight = shift.end_time < shift.start_time
         
-        # Evening coverage: shift must start at or before 9 PM and end at or after 10 PM
-        if shift.start_time <= time(21, 0) and shift.end_time >= time(22, 0):
-            coverage.evening_covered = True
-            coverage.evening_shift = shift
+        if is_overnight:
+            if shift.start_time <= time(21, 0):
+                coverage.evening_covered = True
+                coverage.evening_shift = shift
+            
+            if shift.end_time >= time(9, 0):
+                coverage.morning_covered = True
+                coverage.morning_shift = shift
+        else:
+            if shift.start_time <= time(6, 0) and shift.end_time >= time(9, 0):
+                coverage.morning_covered = True
+                coverage.morning_shift = shift
+            
+            if shift.start_time <= time(21, 0) and shift.end_time >= time(22, 0):
+                coverage.evening_covered = True
+                coverage.evening_shift = shift
     
     coverage.save()
     return coverage
@@ -1310,13 +1317,11 @@ def calculate_weekly_hours(pa, week_start_date):
     """
     from apps.users.models import User
     
-    # Ensure week_start_date is a Monday
     if week_start_date.weekday() != 0:
         week_start_date = week_start_date - timedelta(days=week_start_date.weekday())
     
     week_end_date = week_start_date + timedelta(days=6)
     
-    # Get approved shifts for this PA in this week
     shifts = ShiftRequest.objects.filter(
         requested_by=pa,
         status='APPROVED',
@@ -1324,20 +1329,16 @@ def calculate_weekly_hours(pa, week_start_date):
         date__lte=week_end_date
     )
     
-    # Calculate total hours
     total_hours = sum(shift.duration_hours for shift in shifts)
     
-    # Get PA's max hours per week
-    max_hours = 40  # Default
+    max_hours = 40
     if hasattr(pa, 'pa_profile'):
         max_hours = pa.pa_profile.max_hours_per_week
     
-    # Get schedule period (if any shift exists)
     schedule_period = None
     if shifts.exists():
         schedule_period = shifts.first().schedule_period
     
-    # Create or update weekly coverage
     if schedule_period:
         coverage, created = WeeklyCoverage.objects.get_or_create(
             schedule_period=schedule_period,
@@ -1349,7 +1350,6 @@ def calculate_weekly_hours(pa, week_start_date):
         if not created:
             coverage.total_hours = total_hours
         
-        # Check if exceeds limit
         coverage.check_exceeds_limit(max_hours)
         coverage.save()
         
@@ -1378,10 +1378,8 @@ def update_coverage_for_shift(shift):
     Args:
         shift: ShiftRequest instance
     """
-    # Update critical time coverage
     calculate_critical_coverage(shift.date)
     
-    # Update weekly hours
     week_start = get_monday_of_week(shift.date)
     calculate_weekly_hours(shift.requested_by, week_start)
 ```
@@ -2237,6 +2235,48 @@ from apps.shifts.models import ShiftRequest
 from apps.coverage.models import CriticalTimeCoverage
 
 
+def check_shift_conflicts(schedule_period, date, start_time, end_time, exclude_request_id=None):
+    """
+    Check if requested time conflicts with any APPROVED shift.
+    Only APPROVED shifts block new requests (PENDING doesn't block).
+    
+    Args:
+        schedule_period: SchedulePeriod instance
+        date: datetime.date
+        start_time: datetime.time
+        end_time: datetime.time
+        exclude_request_id: Optional request ID to exclude from conflict check
+    
+    Returns:
+        bool: True if there are conflicts, False otherwise
+    """
+    conflicts = ShiftRequest.objects.filter(
+        date=date,
+        status='APPROVED'
+    )
+    
+    if exclude_request_id:
+        conflicts = conflicts.exclude(id=exclude_request_id)
+    
+    requested_start = datetime.combine(date, start_time)
+    requested_end = datetime.combine(date, end_time)
+    
+    if requested_end <= requested_start:
+        requested_end += timedelta(days=1)
+    
+    for shift in conflicts:
+        shift_start = datetime.combine(shift.date, shift.start_time)
+        shift_end = datetime.combine(shift.date, shift.end_time)
+        
+        if shift_end <= shift_start:
+            shift_end += timedelta(days=1)
+        
+        if requested_start < shift_end and requested_end > shift_start:
+            return True
+    
+    return False
+
+
 def get_coverage_for_date(date):
     """
     Get coverage status for a specific date.
@@ -2250,7 +2290,6 @@ def get_coverage_for_date(date):
             'coverage_status': coverage.coverage_status,
         }
     except CriticalTimeCoverage.DoesNotExist:
-        # Check shifts for this date to determine coverage
         shifts = ShiftRequest.objects.filter(
             date=date,
             status='APPROVED'
@@ -2260,13 +2299,18 @@ def get_coverage_for_date(date):
         evening_covered = False
         
         for shift in shifts:
-            # Morning: 6:00 AM - 9:00 AM (must cover full 3 hours)
-            if shift.start_time <= time(6, 0) and shift.end_time >= time(9, 0):
-                morning_covered = True
+            is_overnight = shift.end_time < shift.start_time
             
-            # Evening: 9:00 PM - 10:00 PM (must cover full 1 hour)
-            if shift.start_time <= time(21, 0) and shift.end_time >= time(22, 0):
-                evening_covered = True
+            if is_overnight:
+                if shift.start_time <= time(21, 0):
+                    evening_covered = True
+                if shift.end_time >= time(9, 0):
+                    morning_covered = True
+            else:
+                if shift.start_time <= time(6, 0) and shift.end_time >= time(9, 0):
+                    morning_covered = True
+                if shift.start_time <= time(21, 0) and shift.end_time >= time(22, 0):
+                    evening_covered = True
         
         if morning_covered and evening_covered:
             status = 'complete'
@@ -2295,26 +2339,22 @@ def get_month_data(year, month):
     Get calendar data for an entire month.
     Returns dict with all days and their shifts/coverage.
     """
-    # Get first and last day of month
     _, last_day = monthrange(year, month)
     start_date = datetime(year, month, 1).date()
     end_date = datetime(year, month, last_day).date()
     
-    # Get all shifts for the month
     shifts = ShiftRequest.objects.filter(
         date__gte=start_date,
         date__lte=end_date,
         status='APPROVED'
     ).select_related('requested_by').order_by('date', 'start_time')
     
-    # Organize shifts by date
     shifts_by_date = {}
     for shift in shifts:
         if shift.date not in shifts_by_date:
             shifts_by_date[shift.date] = []
         shifts_by_date[shift.date].append(shift)
     
-    # Build day-by-day data
     days = []
     current_date = start_date
     
@@ -2332,7 +2372,6 @@ def get_month_data(year, month):
         
         current_date += timedelta(days=1)
     
-    # Coverage summary
     total_days = len(days)
     complete_days = sum(1 for d in days if d['coverage_status'] == 'complete')
     partial_days = sum(1 for d in days if d['coverage_status'] == 'partial')
@@ -2358,27 +2397,23 @@ def get_week_data(year, week_number):
     Get calendar data for a specific week.
     Week starts on Monday (ISO week).
     """
-    # Get the Monday of the specified week
     jan_4 = datetime(year, 1, 4)
     week_start = jan_4 - timedelta(days=jan_4.weekday()) + timedelta(weeks=week_number - 1)
     week_start = week_start.date()
     week_end = week_start + timedelta(days=6)
     
-    # Get all shifts for the week
     shifts = ShiftRequest.objects.filter(
         date__gte=week_start,
         date__lte=week_end,
         status='APPROVED'
     ).select_related('requested_by').order_by('date', 'start_time')
     
-    # Organize shifts by date
     shifts_by_date = {}
     for shift in shifts:
         if shift.date not in shifts_by_date:
             shifts_by_date[shift.date] = []
         shifts_by_date[shift.date].append(shift)
     
-    # Build day-by-day data for the week
     days = []
     current_date = week_start
     
@@ -2413,13 +2448,11 @@ def get_day_data(date):
     coverage = get_coverage_for_date(date)
     shifts = get_shifts_for_date(date)
     
-    # Create hourly timeline (6 AM to 11 PM)
     hourly_timeline = {}
     for hour in range(6, 23):
         hour_start = time(hour, 0)
         hour_end = time(hour + 1, 0) if hour < 23 else time(23, 59)
         
-        # Find shifts covering this hour
         covering_shifts = []
         for shift in shifts:
             if shift.start_time <= hour_start and shift.end_time >= hour_end:
