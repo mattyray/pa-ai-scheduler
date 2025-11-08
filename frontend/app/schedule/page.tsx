@@ -10,6 +10,10 @@ import CancelShiftModal from '@/app/components/CancelShiftModal';
 import { shiftsAPI } from '@/lib/shifts-api';
 import { api } from '@/lib/api';
 
+function parseDate(dateStr: string): Date {
+  return new Date(dateStr + 'T12:00:00');
+}
+
 function formatTime12Hour(time24: string): string {
   const [hours, minutes] = time24.split(':').map(Number);
   const period = hours >= 12 ? 'PM' : 'AM';
@@ -21,6 +25,22 @@ function formatHour12(hour: number): string {
   const period = hour >= 12 ? 'PM' : 'AM';
   const hours12 = hour % 12 || 12;
   return `${hours12}:00 ${period}`;
+}
+
+function isOvernightShift(shift: any): boolean {
+  return shift.end_time < shift.start_time;
+}
+
+function getNextDay(dateStr: string): string {
+  const date = parseDate(dateStr);
+  date.setDate(date.getDate() + 1);
+  return date.toISOString().split('T')[0];
+}
+
+function getPreviousDay(dateStr: string): string {
+  const date = parseDate(dateStr);
+  date.setDate(date.getDate() - 1);
+  return date.toISOString().split('T')[0];
 }
 
 export default function SchedulePage() {
@@ -66,7 +86,7 @@ export default function SchedulePage() {
       
       if (dateParam) {
         try {
-          const parsedDate = new Date(dateParam);
+          const parsedDate = parseDate(dateParam);
           if (!isNaN(parsedDate.getTime())) {
             setCurrentDate(parsedDate);
           }
@@ -190,12 +210,12 @@ export default function SchedulePage() {
   };
 
   const handleMonthDayClick = (date: string) => {
-    setCurrentDate(new Date(date));
+    setCurrentDate(parseDate(date));
     setViewType('week');
   };
 
   const handleWeekDayClick = (date: string) => {
-    setCurrentDate(new Date(date));
+    setCurrentDate(parseDate(date));
     setViewType('day');
   };
 
@@ -515,7 +535,7 @@ function MonthView({ data, onDayClick, onShiftClick, isAdmin, currentUserId }: {
       <div className="grid grid-cols-7">
         {data.weeks?.map((week: any, weekIdx: number) =>
           week.days?.map((day: any, dayIdx: number) => {
-            const date = new Date(day.date);
+            const date = parseDate(day.date);
             const isToday = date.toDateString() === new Date().toDateString();
             const coverageStatus = getCoverageStatus(day.coverage);
             const shifts = day.shifts || [];
@@ -551,6 +571,7 @@ function MonthView({ data, onDayClick, onShiftClick, isAdmin, currentUserId }: {
                     const color = getPAColor(paId);
                     const isPending = shift.status === 'PENDING';
                     const isClickable = isShiftClickable(shift);
+                    const overnight = isOvernightShift(shift);
 
                     return (
                       <div
@@ -576,10 +597,11 @@ function MonthView({ data, onDayClick, onShiftClick, isAdmin, currentUserId }: {
                           backgroundColor: color,
                           color: '#fff',
                         }}
-                        title={`${paName}: ${formatTime12Hour(shift.start_time)} - ${formatTime12Hour(shift.end_time)} ${isPending ? '(PENDING - Click to approve/reject)' : isClickable ? '(Click to manage)' : ''}`}
+                        title={`${paName}: ${formatTime12Hour(shift.start_time)} - ${formatTime12Hour(shift.end_time)}${overnight ? ' (overnight)' : ''} ${isPending ? '(PENDING - Click to approve/reject)' : isClickable ? '(Click to manage)' : ''}`}
                       >
                         <span className="font-medium">
                           {isPending && '⏳ '}
+                          {overnight && '🌙 '}
                           {initials}
                         </span>
                         <span className="hidden sm:inline ml-1 opacity-90">{formatTime12Hour(shift.start_time).replace(' ', '')}</span>
@@ -606,6 +628,10 @@ function MonthView({ data, onDayClick, onShiftClick, isAdmin, currentUserId }: {
         <div className="flex items-center space-x-2">
           <div className="w-3 h-3 bg-blue-100 border-2 border-dashed border-blue-500"></div>
           <span className="text-gray-700">Pending</span>
+        </div>
+        <div className="flex items-center space-x-2">
+          <span className="text-base">🌙</span>
+          <span className="text-gray-700">Overnight</span>
         </div>
         <div className="flex items-center space-x-2">
           <div className="h-3 border-l-4 border-green-500 pl-2"></div>
@@ -663,6 +689,27 @@ function WeekView({
     }
   };
 
+  const getAllShiftsForDay = (dayDate: string) => {
+    const dayShifts = days.find((d: any) => d.date === dayDate)?.shifts || [];
+    
+    const overnightFromPrevDay: any[] = [];
+    const prevDayDate = getPreviousDay(dayDate);
+    const prevDay = days.find((d: any) => d.date === prevDayDate);
+    
+    if (prevDay && prevDay.shifts) {
+      prevDay.shifts.forEach((shift: any) => {
+        if (isOvernightShift(shift)) {
+          overnightFromPrevDay.push({
+            ...shift,
+            isOvernightContinuation: true
+          });
+        }
+      });
+    }
+    
+    return [...dayShifts, ...overnightFromPrevDay];
+  };
+
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
       <div className="grid grid-cols-8 border-b border-gray-200 bg-gray-50">
@@ -670,7 +717,7 @@ function WeekView({
           Time
         </div>
         {days.map((day: any) => {
-          const date = new Date(day.date);
+          const date = parseDate(day.date);
           const isToday = date.toDateString() === new Date().toDateString();
           return (
             <div
@@ -705,12 +752,19 @@ function WeekView({
               </div>
 
               {days.map((day: any) => {
-                const shiftsStartingThisHour = (day.shifts || []).filter((shift: any) => {
+                const allShifts = getAllShiftsForDay(day.date);
+                const shiftsStartingThisHour = allShifts.filter((shift: any) => {
                   const startHour = parseInt(shift.start_time.split(':')[0]);
-                  return hour === startHour;
+                  return hour === startHour && !shift.isOvernightContinuation;
                 });
 
-                const hasShift = shiftsStartingThisHour.length > 0;
+                const overnightContinuingThrough = allShifts.filter((shift: any) => {
+                  if (!shift.isOvernightContinuation) return false;
+                  const endHour = parseInt(shift.end_time.split(':')[0]);
+                  return hour < endHour;
+                });
+
+                const hasShift = shiftsStartingThisHour.length > 0 || overnightContinuingThrough.length > 0;
 
                 return (
                   <div 
@@ -725,6 +779,7 @@ function WeekView({
                       const color = getPAColor(paId);
                       const isPending = shift.status === 'PENDING';
                       const isClickable = isShiftClickable(shift);
+                      const overnight = isOvernightShift(shift);
 
                       return (
                         <div
@@ -754,11 +809,12 @@ function WeekView({
                             top: '0.25rem',
                             height: `${Number(shift.duration_hours) * 3}rem`,
                           }}
-                          title={`${paName}: ${formatTime12Hour(shift.start_time)} - ${formatTime12Hour(shift.end_time)} ${isPending ? '(PENDING)' : isClickable ? '(Click to manage)' : ''}`}
+                          title={`${paName}: ${formatTime12Hour(shift.start_time)} - ${formatTime12Hour(shift.end_time)}${overnight ? ' (overnight)' : ''} ${isPending ? '(PENDING)' : isClickable ? '(Click to manage)' : ''}`}
                         >
                           <div>
                             <div className="font-semibold truncate">
                               {isPending && '⏳ '}
+                              {overnight && '🌙 '}
                               {paName}
                             </div>
                             <div className="text-xs opacity-90">{formatTime12Hour(shift.start_time)}</div>
@@ -767,6 +823,10 @@ function WeekView({
                         </div>
                       );
                     })}
+
+                    {overnightContinuingThrough.length > 0 && shiftsStartingThisHour.length === 0 && (
+                      <div className="absolute inset-0 bg-purple-100 border-l-4 border-purple-400 opacity-30"></div>
+                    )}
                   </div>
                 );
               })}
@@ -816,6 +876,11 @@ function DayView({
       const startHour = parseInt(shift.start_time.split(':')[0]);
       const endHour = parseInt(shift.end_time.split(':')[0]);
       const endMinute = parseInt(shift.end_time.split(':')[1]);
+      const overnight = isOvernightShift(shift);
+      
+      if (overnight) {
+        return startHour <= hour || (endHour > hour || (endHour === hour && endMinute > 0));
+      }
       
       return startHour <= hour && (endHour > hour || (endHour === hour && endMinute > 0));
     });
@@ -896,6 +961,7 @@ function DayView({
                   const color = getPAColor(paId);
                   const isPending = shift.status === 'PENDING';
                   const isClickable = isShiftClickable(shift);
+                  const overnight = isOvernightShift(shift);
 
                   return (
                     <div
@@ -931,8 +997,10 @@ function DayView({
                       <div>
                         <div className="font-bold text-base">
                           {isPending && '⏳ '}
+                          {overnight && '🌙 '}
                           {paName}
                           {isPending && <span className="ml-2 text-xs font-normal">(Pending)</span>}
+                          {overnight && <span className="ml-2 text-xs font-normal">(Overnight)</span>}
                         </div>
                         <div className="text-sm opacity-90 mt-1">{formatTime12Hour(shift.start_time)}</div>
                       </div>
@@ -974,40 +1042,18 @@ function ApproveRejectModal({ isOpen, shift, onClose, onSuccess }: { isOpen: boo
   const handleApprove = async () => {
     if (!shift) return;
     
-    console.log('🚀 Attempting to approve shift:', {
-      shiftId: shift.id,
-      adminNotes,
-      userRole: localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user') || '{}').role : 'unknown',
-      hasToken: !!localStorage.getItem('access_token')
-    });
-    
     setLoading(true);
     
     try {
-      const response = await shiftsAPI.approveRequest(shift.id, adminNotes);
-      console.log('✅ Approve successful:', response.data);
+      await shiftsAPI.approveRequest(shift.id, adminNotes);
       onSuccess();
     } catch (err: any) {
-      console.error('❌ Approve failed:', {
-        status: err.response?.status,
-        statusText: err.response?.statusText,
-        data: err.response?.data,
-        message: err.message,
-        config: {
-          url: err.config?.url,
-          method: err.config?.method,
-          headers: err.config?.headers
-        }
-      });
+      console.error('❌ Approve failed:', err);
       
       if (err.response?.data?.error) {
         alert(`Error: ${err.response.data.error}`);
       } else if (err.response?.data?.detail) {
         alert(`Error: ${err.response.data.detail}`);
-      } else if (err.response?.status === 403) {
-        alert('Access Denied: You do not have permission to approve shifts. Please check if you are logged in as an admin.');
-      } else if (err.response?.status === 401) {
-        alert('Authentication Error: Your session may have expired. Please try logging in again.');
       } else {
         alert(`Failed to approve shift: ${err.message}`);
       }
@@ -1022,23 +1068,13 @@ function ApproveRejectModal({ isOpen, shift, onClose, onSuccess }: { isOpen: boo
       return;
     }
     
-    console.log('🚀 Attempting to reject shift:', {
-      shiftId: shift.id,
-      rejectedReason
-    });
-    
     setLoading(true);
     
     try {
-      const response = await shiftsAPI.rejectRequest(shift.id, rejectedReason);
-      console.log('✅ Reject successful:', response.data);
+      await shiftsAPI.rejectRequest(shift.id, rejectedReason);
       onSuccess();
     } catch (err: any) {
-      console.error('❌ Reject failed:', {
-        status: err.response?.status,
-        data: err.response?.data,
-        message: err.message
-      });
+      console.error('❌ Reject failed:', err);
       
       if (err.response?.data?.error) {
         alert(`Error: ${err.response.data.error}`);
@@ -1056,7 +1092,7 @@ function ApproveRejectModal({ isOpen, shift, onClose, onSuccess }: { isOpen: boo
 
   return (
     <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4 z-[9998]">
-      <div className="bg-white rounded-lg max-w-lg w-full shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full relative z-[9999]">
+      <div className="bg-white rounded-lg max-w-lg w-full shadow-xl relative z-[9999]">
         <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">
             {mode === 'choose' && 'Review Shift Request'}
@@ -1066,7 +1102,7 @@ function ApproveRejectModal({ isOpen, shift, onClose, onSuccess }: { isOpen: boo
 
           <div className="mb-4 p-4 bg-gray-50 rounded-lg">
             <p className="text-sm font-medium text-gray-900">PA: {shift.requested_by_name}</p>
-            <p className="text-sm text-gray-600">Date: {new Date(shift.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</p>
+            <p className="text-sm text-gray-600">Date: {parseDate(shift.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</p>
             <p className="text-sm text-gray-600">Time: {formatTime12Hour(shift.start_time)} - {formatTime12Hour(shift.end_time)} ({shift.duration_hours}h)</p>
             {shift.notes && (
               <p className="text-sm text-gray-600 mt-2 italic">Notes: "{shift.notes}"</p>
