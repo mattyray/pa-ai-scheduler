@@ -6,6 +6,10 @@ import { useAuth } from '@/lib/auth-context';
 import { schedulesAPI, SchedulePeriod } from '@/lib/schedules-api';
 import { shiftsAPI } from '@/lib/shifts-api';
 
+function parseDate(dateStr: string): Date {
+  return new Date(dateStr + 'T12:00:00');
+}
+
 export default function NewShiftRequestPage() {
   const router = useRouter();
   const { user, isPA, loading: authLoading, logout } = useAuth();
@@ -62,7 +66,6 @@ export default function NewShiftRequestPage() {
     setError('');
     setLoading(true);
 
-    // Log what we're sending
     const requestData = {
       schedule_period: parseInt(formData.schedule_period),
       date: formData.date,
@@ -85,13 +88,11 @@ export default function NewShiftRequestPage() {
       console.error('❌ Failed to create request:', err);
       console.error('📋 Full error:', err.response);
       
-      // Show detailed error from backend
       if (err.response?.data) {
         const errorData = err.response.data;
         console.log('🔍 Backend error details:', errorData);
         
         if (typeof errorData === 'object') {
-          // Format all validation errors
           const errorMessages = Object.entries(errorData)
             .map(([field, messages]) => {
               if (Array.isArray(messages)) {
@@ -159,7 +160,6 @@ export default function NewShiftRequestPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      {/* Navigation Header */}
       <nav className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
@@ -187,10 +187,8 @@ export default function NewShiftRequestPage() {
         </div>
       </nav>
 
-      {/* Main Content */}
       <main className="max-w-3xl mx-auto py-8 sm:px-6 lg:px-8">
         <div className="px-4 sm:px-0">
-          {/* Info Box */}
           <div className="mb-6 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg shadow-lg p-6 text-white">
             <div className="flex items-start">
               <div className="flex-shrink-0">
@@ -210,7 +208,6 @@ export default function NewShiftRequestPage() {
             </div>
           </div>
 
-          {/* Form */}
           <div className="bg-white shadow-xl rounded-lg overflow-hidden">
             <form onSubmit={handleSubmit} className="space-y-6 p-6">
               {error && (
@@ -239,7 +236,6 @@ export default function NewShiftRequestPage() {
                 </div>
               ) : (
                 <>
-                  {/* Schedule Period */}
                   <div>
                     <label htmlFor="schedule_period" className="block text-sm font-semibold text-gray-700 mb-2">
                       Schedule Period *
@@ -253,13 +249,12 @@ export default function NewShiftRequestPage() {
                     >
                       {periods.map((period) => (
                         <option key={period.id} value={period.id}>
-                          {period.name} ({new Date(period.start_date).toLocaleDateString()} - {new Date(period.end_date).toLocaleDateString()})
+                          {period.name} ({parseDate(period.start_date).toLocaleDateString()} - {parseDate(period.end_date).toLocaleDateString()})
                         </option>
                       ))}
                     </select>
                   </div>
 
-                  {/* Date - Clickable wrapper */}
                   <div>
                     <label htmlFor="date" className="block text-sm font-semibold text-gray-700 mb-2">
                       Shift Date * <span className="text-xs font-normal text-gray-500">(Click anywhere to select date)</span>
@@ -283,9 +278,7 @@ export default function NewShiftRequestPage() {
                     </div>
                   </div>
 
-                  {/* Time Inputs Side by Side */}
                   <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                    {/* Start Time - Clickable wrapper */}
                     <div>
                       <label htmlFor="start_time" className="block text-sm font-semibold text-gray-700 mb-2">
                         Start Time * <span className="text-xs font-normal text-gray-500">(Click to select)</span>
@@ -307,7 +300,6 @@ export default function NewShiftRequestPage() {
                       </div>
                     </div>
 
-                    {/* End Time - Clickable wrapper */}
                     <div>
                       <label htmlFor="end_time" className="block text-sm font-semibold text-gray-700 mb-2">
                         End Time * <span className="text-xs font-normal text-gray-500">(Click to select)</span>
@@ -330,7 +322,6 @@ export default function NewShiftRequestPage() {
                     </div>
                   </div>
 
-                  {/* Duration Display */}
                   {formData.start_time && formData.end_time && (
                     <div className={`rounded-lg p-4 ${isOvernight ? 'bg-purple-50 border-2 border-purple-300' : 'bg-blue-50 border-2 border-blue-300'}`}>
                       <div className="flex items-center justify-between">
@@ -357,7 +348,6 @@ export default function NewShiftRequestPage() {
                     </div>
                   )}
 
-                  {/* Notes */}
                   <div>
                     <label htmlFor="notes" className="block text-sm font-semibold text-gray-700 mb-2">
                       Notes (Optional)
@@ -372,7 +362,6 @@ export default function NewShiftRequestPage() {
                     />
                   </div>
 
-                  {/* Submit Button */}
                   <div className="flex space-x-3 pt-4">
                     <button
                       type="submit"

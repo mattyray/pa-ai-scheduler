@@ -5,6 +5,18 @@ import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { pasAPI, PADetail, Shift } from '@/lib/pas-api';
 
+function parseDate(dateStr: string): Date {
+  return new Date(dateStr + 'T12:00:00');
+}
+
+function formatTime12Hour(time: string): string {
+  const [hours, minutes] = time.split(':');
+  const hour = parseInt(hours);
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 || 12;
+  return `${hour12}:${minutes} ${ampm}`;
+}
+
 export default function PADetailPage() {
   const router = useRouter();
   const params = useParams();
@@ -81,7 +93,6 @@ export default function PADetailPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <nav className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
@@ -105,14 +116,11 @@ export default function PADetailPage() {
         </div>
       </nav>
 
-      {/* Main Content */}
       <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
-          {/* Left Column - Profile & Stats */}
           <div className="lg:col-span-1 space-y-6">
             
-            {/* Basic Info Card */}
             <div className="bg-white shadow rounded-lg p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Profile</h2>
               
@@ -154,7 +162,7 @@ export default function PADetailPage() {
                 <div>
                   <label className="text-xs font-medium text-gray-500">Date Joined</label>
                   <p className="text-sm text-gray-900">
-                    {new Date(pa.date_joined).toLocaleDateString('en-US', {
+                    {parseDate(pa.date_joined).toLocaleDateString('en-US', {
                       month: 'long',
                       day: 'numeric',
                       year: 'numeric',
@@ -166,7 +174,7 @@ export default function PADetailPage() {
                   <div>
                     <label className="text-xs font-medium text-gray-500">Last Login</label>
                     <p className="text-sm text-gray-900">
-                      {new Date(pa.last_login).toLocaleDateString('en-US', {
+                      {parseDate(pa.last_login).toLocaleDateString('en-US', {
                         month: 'short',
                         day: 'numeric',
                         year: 'numeric',
@@ -177,7 +185,6 @@ export default function PADetailPage() {
               </div>
             </div>
 
-            {/* Profile Settings Card */}
             <div className="bg-white shadow rounded-lg p-6">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-lg font-semibold text-gray-900">Settings</h2>
@@ -255,7 +262,6 @@ export default function PADetailPage() {
               )}
             </div>
 
-            {/* Stats Card */}
             <div className="bg-white shadow rounded-lg p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Statistics</h2>
               
@@ -292,7 +298,7 @@ export default function PADetailPage() {
                   <div className="flex justify-between">
                     <span className="text-sm text-gray-600">Last Worked</span>
                     <span className="text-sm font-semibold text-gray-900">
-                      {new Date(pa.stats.last_worked_date).toLocaleDateString('en-US', {
+                      {parseDate(pa.stats.last_worked_date).toLocaleDateString('en-US', {
                         month: 'short',
                         day: 'numeric',
                       })}
@@ -303,10 +309,8 @@ export default function PADetailPage() {
             </div>
           </div>
 
-          {/* Right Column - Shifts */}
           <div className="lg:col-span-2 space-y-6">
             
-            {/* Pending Requests */}
             {pa.pending_requests.length > 0 && (
               <div className="bg-white shadow rounded-lg">
                 <div className="px-6 py-4 border-b border-gray-200">
@@ -324,7 +328,6 @@ export default function PADetailPage() {
               </div>
             )}
 
-            {/* Upcoming Shifts */}
             <div className="bg-white shadow rounded-lg">
               <div className="px-6 py-4 border-b border-gray-200">
                 <h2 className="text-lg font-semibold text-gray-900">
@@ -344,7 +347,6 @@ export default function PADetailPage() {
               </div>
             </div>
 
-            {/* Recent Shifts */}
             <div className="bg-white shadow rounded-lg">
               <div className="px-6 py-4 border-b border-gray-200">
                 <h2 className="text-lg font-semibold text-gray-900">
@@ -382,7 +384,7 @@ function ShiftCard({ shift, status }: { shift: Shift; status: 'pending' | 'upcom
       <div className="flex justify-between items-start">
         <div>
           <p className="text-sm font-semibold text-gray-900">
-            {new Date(shift.date).toLocaleDateString('en-US', {
+            {parseDate(shift.date).toLocaleDateString('en-US', {
               weekday: 'long',
               month: 'long',
               day: 'numeric',
@@ -410,12 +412,4 @@ function ShiftCard({ shift, status }: { shift: Shift; status: 'pending' | 'upcom
       </div>
     </div>
   );
-}
-
-function formatTime12Hour(time: string): string {
-  const [hours, minutes] = time.split(':');
-  const hour = parseInt(hours);
-  const ampm = hour >= 12 ? 'PM' : 'AM';
-  const hour12 = hour % 12 || 12;
-  return `${hour12}:${minutes} ${ampm}`;
 }

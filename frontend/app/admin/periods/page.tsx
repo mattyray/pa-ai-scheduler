@@ -5,6 +5,10 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { schedulesAPI, SchedulePeriod } from '@/lib/schedules-api';
 
+function parseDate(dateStr: string): Date {
+  return new Date(dateStr + 'T12:00:00');
+}
+
 export default function ManagePeriodsPage() {
   const router = useRouter();
   const { user, isAdmin, loading: authLoading, logout } = useAuth();
@@ -54,7 +58,7 @@ export default function ManagePeriodsPage() {
 
   const handleStatusChange = async (id: number, newStatus: string) => {
     try {
-      await schedulesAPI.updatePeriod(id, { status: newStatus });
+      await schedulesAPI.updatePeriodStatus(id, newStatus);
       loadPeriods();
     } catch (err) {
       console.error('Failed to update status:', err);
@@ -85,7 +89,6 @@ export default function ManagePeriodsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Navigation Header */}
       <nav className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
@@ -119,10 +122,8 @@ export default function ManagePeriodsPage() {
         </div>
       </nav>
 
-      {/* Main Content */}
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 sm:px-0">
-          {/* Periods List */}
           <div className="bg-white shadow overflow-hidden sm:rounded-lg">
             {periods.length === 0 ? (
               <div className="text-center py-12">
@@ -170,11 +171,11 @@ export default function ManagePeriodsPage() {
                       <tr key={period.id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm font-medium text-gray-900">{period.name}</div>
-                          <div className="text-xs text-gray-500">Created {new Date(period.created_at).toLocaleDateString()}</div>
+                          <div className="text-xs text-gray-500">Created {parseDate(period.created_at).toLocaleDateString()}</div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900">
-                            {new Date(period.start_date).toLocaleDateString()} - {new Date(period.end_date).toLocaleDateString()}
+                            {parseDate(period.start_date).toLocaleDateString()} - {parseDate(period.end_date).toLocaleDateString()}
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">

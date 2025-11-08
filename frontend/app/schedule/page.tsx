@@ -652,195 +652,235 @@ function MonthView({ data, onDayClick, onShiftClick, isAdmin, currentUserId }: {
 
 function WeekView({ 
   data, 
-  onDayClick, 
-  onSuggestShift, 
+  onDayClick,
+  onSuggestShift,
   onShiftClick,
   onPARequest,
-  isAdmin, 
-  currentUserId 
+  isAdmin,
+  currentUserId
 }: { 
   data: any; 
-  onDayClick: (date: string) => void; 
-  onSuggestShift: (date: string, startTime?: string, endTime?: string) => void; 
+  onDayClick?: (date: string) => void;
+  onSuggestShift?: (date?: string, startTime?: string, endTime?: string) => void;
   onShiftClick: (shift: any) => void;
-  onPARequest: (date: string, startTime: string, endTime: string) => void;
-  isAdmin?: boolean; 
-  currentUserId?: number 
+  onPARequest?: (date: string, startTime: string, endTime: string) => void;
+  isAdmin?: boolean;
+  currentUserId?: number;
 }) {
+  if (!data || !data.days) {
+    return <div className="text-center py-12 text-gray-500">Loading...</div>;
+  }
+
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const hours = Array.from({ length: 24 }, (_, i) => i);
-  const days = data.days || [];
 
-  const isShiftClickable = (shift: any): boolean => {
-    if (shift.status === 'PENDING' && isAdmin) return true;
-    if (shift.status === 'APPROVED' && isAdmin) return true;
-    if (shift.status === 'APPROVED' && shift.requested_by === currentUserId) return true;
-    return false;
+  const isOvernightShift = (shift: any): boolean => {
+    return shift.end_time < shift.start_time;
   };
 
-  const handleCellClick = (date: string, hour: number) => {
-    const startTime = `${hour.toString().padStart(2, '0')}:00`;
-    const endHour = hour + 3;
-    const endTime = `${endHour.toString().padStart(2, '0')}:00`;
-    
-    if (isAdmin) {
-      onSuggestShift(date, startTime, endTime);
-    } else {
-      onPARequest(date, startTime, endTime);
-    }
+  const getNextDayDate = (dateStr: string): string => {
+    const date = parseDate(dateStr);
+    date.setDate(date.getDate() + 1);
+    return date.toISOString().split('T')[0];
   };
 
-  const getAllShiftsForDay = (dayDate: string) => {
-    const dayShifts = days.find((d: any) => d.date === dayDate)?.shifts || [];
+  const getShiftsCoveringHour = (dayDate: string, hour: number, dayShifts: any[]) => {
+    const allShifts: any[] = [];
     
-    const overnightFromPrevDay: any[] = [];
-    const prevDayDate = getPreviousDay(dayDate);
-    const prevDay = days.find((d: any) => d.date === prevDayDate);
-    
-    if (prevDay && prevDay.shifts) {
-      prevDay.shifts.forEach((shift: any) => {
-        if (isOvernightShift(shift)) {
-          overnightFromPrevDay.push({
-            ...shift,
-            isOvernightContinuation: true
-          });
+    (dayShifts || []).forEach(shift => {
+      const [startHour] = shift.start_time.split(':').map(Number);
+      const [endHour] = shift.end_time.split(':').map(Number);
+
+      if (isOvernightShift(shift)) {
+        if (hour >= startHour) {
+          allShifts.push(shift);
         }
-      });
+      } else {
+        if (hour >= startHour && hour < endHour) {
+          allShifts.push(shift);
+        }
+      }
+    });
+
+    data.days.forEach((day: any) => {
+      if (day.date !== dayDate) {
+        (day.shifts || []).forEach((shift: any) => {
+          if (isOvernightShift(shift) && getNextDayDate(shift.date) === dayDate) {
+            const [endHour] = shift.end_time.split(':').map(Number);
+            if (hour < endHour) {
+              allShifts.push({
+                ...shift,
+                isOvernightContinuation: true,
+                originalDate: shift.date
+              });
+            }
+          }
+        });
+      }
+    });
+
+    return allShifts;
+  };
+
+  const getShiftHeight = (shift: any, currentHour: number): number => {
+    const [startHour, startMin] = shift.start_time.split(':').map(Number);
+    const [endHour, endMin] = shift.end_time.split(':').map(Number);
+
+    if (shift.isOvernightContinuation) {
+      if (currentHour === 0) {
+        return Math.min(endHour * 60 + endMin, 60);
+      } else if (currentHour < endHour) {
+        return 60;
+      } else if (currentHour === endHour) {
+        return endMin;
+      }
+      return 0;
     }
-    
-    return [...dayShifts, ...overnightFromPrevDay];
+
+    if (isOvernightShift(shift)) {
+      if (currentHour >= startHour) {
+        if (currentHour === startHour) {
+          return 60 - startMin;
+        }
+        return 60;
+      }
+      return 0;
+    }
+
+    if (currentHour === startHour && currentHour === endHour - 1) {
+      return (endHour * 60 + endMin) - (startHour * 60 + startMin);
+    } else if (currentHour === startHour) {
+      return 60 - startMin;
+    } else if (currentHour === endHour - 1) {
+      return endMin || 60;
+    } else if (currentHour > startHour && currentHour < endHour - 1) {
+      return 60;
+    }
+
+    return 60;
+  };
+
+  const getShiftTopOffset = (shift: any, currentHour: number): number => {
+    const [startHour, startMin] = shift.start_time.split(':').map(Number);
+
+    if (shift.isOvernightContinuation) {
+      return 0;
+    }
+
+    if (currentHour === startHour) {
+      return startMin;
+    }
+
+    return 0;
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-      <div className="grid grid-cols-8 border-b border-gray-200 bg-gray-50">
-        <div className="p-3 text-xs sm:text-sm font-semibold text-gray-700 border-r border-gray-200">
-          Time
-        </div>
-        {days.map((day: any) => {
-          const date = parseDate(day.date);
-          const isToday = date.toDateString() === new Date().toDateString();
-          return (
-            <div
-              key={day.date}
-              className={`p-2 text-center cursor-pointer hover:bg-gray-100 transition-colors ${isToday ? 'bg-blue-50' : ''}`}
-              onClick={() => onDayClick(day.date)}
-            >
-              <div className="text-xs text-gray-600">
-                {date.toLocaleDateString('en-US', { weekday: 'short' })}
-              </div>
-              <div className={`text-sm sm:text-base font-bold ${isToday ? 'text-blue-600' : 'text-gray-900'}`}>
-                {date.getDate()}
-              </div>
+    <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
+      <div className="overflow-x-auto">
+        <div className="inline-block min-w-full align-middle">
+          <div className="grid grid-cols-[80px_repeat(7,minmax(120px,1fr))] border-b border-gray-200">
+            <div className="sticky left-0 bg-gray-50 border-r border-gray-200 p-3 font-semibold text-sm text-gray-700 z-10">
+              Time
             </div>
-          );
-        })}
-      </div>
+            {data.days.map((day: any, idx: number) => {
+              const date = parseDate(day.date);
+              const today = new Date();
+              const isToday = 
+                date.getDate() === today.getDate() &&
+                date.getMonth() === today.getMonth() &&
+                date.getFullYear() === today.getFullYear();
 
-      <div className="relative">
-        {hours.map((hour) => {
-          const isCriticalTime = (hour >= 6 && hour < 9) || (hour >= 21 && hour < 22);
-          
-          return (
-            <div
-              key={hour}
-              className={`grid grid-cols-8 border-b border-gray-100 ${
-                isCriticalTime ? 'bg-yellow-50/30' : ''
-              }`}
-            >
-              <div className="p-2 text-xs text-gray-500 font-medium">
-                {formatHour12(hour)}
-              </div>
-
-              {days.map((day: any) => {
-                const allShifts = getAllShiftsForDay(day.date);
-                const shiftsStartingThisHour = allShifts.filter((shift: any) => {
-                  const startHour = parseInt(shift.start_time.split(':')[0]);
-                  return hour === startHour && !shift.isOvernightContinuation;
-                });
-
-                const overnightContinuingThrough = allShifts.filter((shift: any) => {
-                  if (!shift.isOvernightContinuation) return false;
-                  const endHour = parseInt(shift.end_time.split(':')[0]);
-                  return hour < endHour;
-                });
-
-                const hasShift = shiftsStartingThisHour.length > 0 || overnightContinuingThrough.length > 0;
-
-                return (
-                  <div 
-                    key={`${day.date}-${hour}`} 
-                    className={`relative p-1 min-h-[3rem] ${!hasShift ? 'cursor-pointer hover:bg-blue-50 transition-colors' : ''}`}
-                    onClick={() => !hasShift && handleCellClick(day.date, hour)}
-                    title={!hasShift ? (isAdmin ? 'Click to suggest shift' : 'Click to request shift') : ''}
-                  >
-                    {shiftsStartingThisHour.map((shift: any) => {
-                      const paName = shift.requested_by_name || shift.requested_by || 'Unknown';
-                      const paId = shift.requested_by || shift.id;
-                      const color = getPAColor(paId);
-                      const isPending = shift.status === 'PENDING';
-                      const isClickable = isShiftClickable(shift);
-                      const overnight = isOvernightShift(shift);
-
-                      return (
-                        <div
-                          key={shift.id}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (isClickable) {
-                              onShiftClick(shift);
-                            }
-                          }}
-                          className={`absolute inset-x-1 rounded px-2 py-1 text-xs font-medium shadow-sm z-10 flex flex-col justify-between transition-all ${
-                            isPending 
-                              ? 'border-2 border-dashed cursor-pointer hover:scale-105' 
-                              : isClickable
-                              ? 'text-white cursor-pointer hover:opacity-80'
-                              : 'text-white'
-                          }`}
-                          style={isPending ? {
-                            backgroundColor: color + '30',
-                            borderColor: color,
-                            color: color,
-                            top: '0.25rem',
-                            height: `${Number(shift.duration_hours) * 3}rem`,
-                          } : {
-                            backgroundColor: color,
-                            color: '#fff',
-                            top: '0.25rem',
-                            height: `${Number(shift.duration_hours) * 3}rem`,
-                          }}
-                          title={`${paName}: ${formatTime12Hour(shift.start_time)} - ${formatTime12Hour(shift.end_time)}${overnight ? ' (overnight)' : ''} ${isPending ? '(PENDING)' : isClickable ? '(Click to manage)' : ''}`}
-                        >
-                          <div>
-                            <div className="font-semibold truncate">
-                              {isPending && '⏳ '}
-                              {overnight && '🌙 '}
-                              {paName}
-                            </div>
-                            <div className="text-xs opacity-90">{formatTime12Hour(shift.start_time)}</div>
-                          </div>
-                          <div className="text-xs opacity-90 text-right">{formatTime12Hour(shift.end_time)}</div>
-                        </div>
-                      );
-                    })}
-
-                    {overnightContinuingThrough.length > 0 && shiftsStartingThisHour.length === 0 && (
-                      <div className="absolute inset-0 bg-purple-100 border-l-4 border-purple-400 opacity-30"></div>
-                    )}
+              return (
+                <div
+                  key={idx}
+                  className={`p-3 text-center border-r border-gray-200 ${
+                    isToday ? 'bg-blue-50' : 'bg-gray-50'
+                  }`}
+                >
+                  <div className={`font-semibold text-sm ${isToday ? 'text-blue-600' : 'text-gray-900'}`}>
+                    {dayNames[date.getDay()]}
                   </div>
-                );
-              })}
-            </div>
-          );
-        })}
-      </div>
+                  <div className={`text-xs mt-1 ${isToday ? 'text-blue-600 font-bold' : 'text-gray-500'}`}>
+                    {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
 
-      <div className="border-t border-gray-200 bg-blue-50 px-4 py-3">
-        <p className="text-sm text-blue-800">
-          💡 <strong>Tip:</strong> {isAdmin 
-            ? 'Click on any empty time slot to suggest a shift for that time' 
-            : 'Click on any empty time slot to request a shift for that time'}
-        </p>
+          <div className="relative">
+            {hours.map((hour) => (
+              <div
+                key={hour}
+                className="grid grid-cols-[80px_repeat(7,minmax(120px,1fr))] border-b border-gray-100"
+                style={{ minHeight: '60px' }}
+              >
+                <div className="sticky left-0 bg-white border-r border-gray-200 p-2 text-xs text-gray-500 z-10">
+                  {hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`}
+                </div>
+
+                {data.days.map((day: any, dayIdx: number) => {
+                  const shiftsInHour = getShiftsCoveringHour(day.date, hour, day.shifts || []);
+                  
+                  return (
+                    <div
+                      key={dayIdx}
+                      className="relative border-r border-gray-100 hover:bg-gray-50 transition-colors"
+                      style={{ minHeight: '60px' }}
+                    >
+                      {shiftsInHour.map((shift, shiftIdx) => {
+                        const height = getShiftHeight(shift, hour);
+                        const topOffset = getShiftTopOffset(shift, hour);
+                        
+                        if (height === 0) return null;
+
+                        const isFirstSegment = shift.isOvernightContinuation 
+                          ? hour === 0
+                          : hour === parseInt(shift.start_time.split(':')[0]);
+
+                        return (
+                          <div
+                            key={`${shift.id}-${shiftIdx}`}
+                            onClick={() => onShiftClick(shift)}
+                            className="absolute inset-x-0 px-1 cursor-pointer group"
+                            style={{
+                              top: `${topOffset}px`,
+                              height: `${height}px`,
+                            }}
+                          >
+                            <div
+                              className="h-full rounded shadow-sm border-l-4 p-1.5 overflow-hidden transition-all group-hover:shadow-md"
+                              style={{
+                                backgroundColor: getPAColor(shift.requested_by) + '20',
+                                borderLeftColor: getPAColor(shift.requested_by),
+                              }}
+                            >
+                              {isFirstSegment && (
+                                <div className="text-xs">
+                                  <div className="font-semibold text-gray-900 truncate">
+                                    {shift.pa_name}
+                                  </div>
+                                  <div className="text-gray-600 text-[10px]">
+                                    {formatTime12Hour(shift.start_time)}
+                                    {shift.isOvernightContinuation && (
+                                      <span className="ml-1 text-purple-600">
+                                        (from {parseDate(shift.originalDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );

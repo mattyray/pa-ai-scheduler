@@ -1,6 +1,5 @@
 import { api } from './api';
 
-// Paginated response from Django REST Framework
 export interface PaginatedResponse<T> {
   count: number;
   next: string | null;
@@ -28,29 +27,25 @@ export interface CreateSchedulePeriod {
 }
 
 export const schedulesAPI = {
-  // List all periods - returns paginated response
   listPeriods: () => api.get<PaginatedResponse<SchedulePeriod>>('/api/schedule-periods/'),
   
-  // Get single period details
   getPeriod: (id: number) => api.get(`/api/schedule-periods/${id}/`),
   
-  // Create new period (admin only)
   createPeriod: (data: CreateSchedulePeriod) => 
     api.post('/api/schedule-periods/', data),
   
-  // Update period (admin only)
   updatePeriod: (id: number, data: Partial<CreateSchedulePeriod>) => 
     api.patch(`/api/schedule-periods/${id}/`, data),
   
-  // Delete period (admin only)
+  updatePeriodStatus: (id: number, status: string) =>
+    api.patch(`/api/schedule-periods/${id}/`, { status }),
+  
   deletePeriod: (id: number) => 
     api.delete(`/api/schedule-periods/${id}/`),
   
-  // Finalize period (admin only)
   finalizePeriod: (id: number) => 
     api.post(`/api/schedule-periods/${id}/finalize/`),
   
-  // Calendar views
   getMonthView: (year: number, month: number, paId?: number) => {
     const params = paId ? `?pa_id=${paId}` : '';
     return api.get(`/api/calendar/month/${year}/${month}/${params}`);
