@@ -10,6 +10,10 @@ interface EditShiftModalProps {
   onSuccess: () => void;
 }
 
+function parseDate(dateStr: string): Date {
+  return new Date(dateStr + 'T12:00:00');
+}
+
 export default function EditShiftModal({
   isOpen,
   shift,
