@@ -15,6 +15,18 @@ interface DashboardStats {
   active_pas: number;
 }
 
+function parseDate(dateStr: string): Date {
+  return new Date(dateStr + 'T12:00:00');
+}
+
+function formatTime12Hour(time: string): string {
+  const [hours, minutes] = time.split(':');
+  const hour = parseInt(hours);
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 || 12;
+  return `${hour12}:${minutes} ${ampm}`;
+}
+
 export default function AdminDashboard() {
   const router = useRouter();
   const { user, isAdmin, loading, logout } = useAuth();
@@ -77,12 +89,12 @@ export default function AdminDashboard() {
       const gaps: any[] = [];
       monthData.data.weeks?.forEach((week: any) => {
         week.days?.forEach((day: any) => {
-          if (day.is_current_month && new Date(day.date) >= new Date()) {
+          if (day.is_current_month && parseDate(day.date) >= new Date()) {
             if (!day.coverage?.morning_covered) {
               gaps.push({
                 date: day.date,
                 time_slot: 'morning',
-                date_formatted: new Date(day.date).toLocaleDateString('en-US', {
+                date_formatted: parseDate(day.date).toLocaleDateString('en-US', {
                   month: 'short',
                   day: 'numeric',
                 }),
@@ -94,7 +106,7 @@ export default function AdminDashboard() {
               gaps.push({
                 date: day.date,
                 time_slot: 'evening',
-                date_formatted: new Date(day.date).toLocaleDateString('en-US', {
+                date_formatted: parseDate(day.date).toLocaleDateString('en-US', {
                   month: 'short',
                   day: 'numeric',
                 }),
@@ -482,8 +494,12 @@ function MiniMonthCalendar({ data, onDayClick }: { data: any; onDayClick: (date:
       <div className="grid grid-cols-7 gap-1">
         {data.weeks?.map((week: any, weekIdx: number) =>
           week.days?.map((day: any, dayIdx: number) => {
-            const date = new Date(day.date);
-            const isToday = date.toDateString() === new Date().toDateString();
+            const date = parseDate(day.date);
+            const today = new Date();
+            const isToday = 
+              date.getDate() === today.getDate() &&
+              date.getMonth() === today.getMonth() &&
+              date.getFullYear() === today.getFullYear();
             const coverageColor = getCoverageColor(day.coverage);
 
             return (
@@ -497,7 +513,7 @@ function MiniMonthCalendar({ data, onDayClick }: { data: any; onDayClick: (date:
                 } ${isToday ? 'ring-2 ring-blue-500' : ''}`}
               >
                 <div className="flex flex-col items-center justify-center h-full">
-                  <span className={`${isToday ? 'text-blue-600 font-bold' : 'text-gray-900'}`}>
+                  <span className={`${isToday ? 'text-blue-600 font-bold' : 'text-gray-900'} ${!day.is_current_month ? 'text-gray-300' : ''}`}>
                     {date.getDate()}
                   </span>
                 </div>
@@ -523,12 +539,4 @@ function MiniMonthCalendar({ data, onDayClick }: { data: any; onDayClick: (date:
       </div>
     </div>
   );
-}
-
-function formatTime12Hour(time: string): string {
-  const [hours, minutes] = time.split(':');
-  const hour = parseInt(hours);
-  const ampm = hour >= 12 ? 'PM' : 'AM';
-  const hour12 = hour % 12 || 12;
-  return `${hour12}:${minutes} ${ampm}`;
 }
