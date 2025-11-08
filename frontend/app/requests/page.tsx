@@ -7,6 +7,10 @@ import { shiftsAPI, ShiftRequest } from '@/lib/shifts-api';
 
 type TabType = 'pending' | 'approved' | 'rejected';
 
+function parseDate(dateStr: string): Date {
+  return new Date(dateStr + 'T12:00:00');
+}
+
 export default function RequestsPage() {
   const router = useRouter();
   const { user, isPA, isAdmin, loading: authLoading, logout } = useAuth();
@@ -44,7 +48,7 @@ export default function RequestsPage() {
         requestsList = requestsList.filter(r => r.requested_by === user?.id);
       }
       
-      requestsList.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      requestsList.sort((a, b) => parseDate(a.date).getTime() - parseDate(b.date).getTime());
       
       setRequests(requestsList);
     } catch (err) {
@@ -156,7 +160,7 @@ export default function RequestsPage() {
   };
 
   const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
+    const date = parseDate(dateStr);
     const today = new Date();
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
@@ -176,7 +180,7 @@ export default function RequestsPage() {
   };
 
   const isUrgent = (dateStr: string) => {
-    const date = new Date(dateStr);
+    const date = parseDate(dateStr);
     const today = new Date();
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
@@ -192,7 +196,6 @@ export default function RequestsPage() {
   const getFilteredRequests = () => {
     let filtered = requests;
 
-    // Filter by tab
     if (activeTab === 'pending') {
       filtered = filtered.filter(r => r.status === 'PENDING');
     } else if (activeTab === 'approved') {
@@ -201,12 +204,11 @@ export default function RequestsPage() {
       filtered = filtered.filter(r => r.status === 'REJECTED' || r.status === 'CANCELLED');
     }
 
-    // Filter by search query
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(r => {
         const paName = r.requested_by_name?.toLowerCase() || '';
-        const date = new Date(r.date).toLocaleDateString('en-US').toLowerCase();
+        const date = parseDate(r.date).toLocaleDateString('en-US').toLowerCase();
         const notes = r.notes?.toLowerCase() || '';
         const period = r.schedule_period_name?.toLowerCase() || '';
         
@@ -239,7 +241,6 @@ export default function RequestsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Toast Notification */}
       {toast && (
         <div className="fixed top-4 right-4 z-50 animate-slide-in-right">
           <div className={`rounded-lg shadow-lg p-4 ${
@@ -259,7 +260,6 @@ export default function RequestsPage() {
         </div>
       )}
 
-      {/* Navigation */}
       <nav className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
@@ -297,10 +297,8 @@ export default function RequestsPage() {
         </div>
       </nav>
 
-      {/* Main Content */}
       <main className="max-w-6xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
         
-        {/* Tabs and Search */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
           <div className="border-b border-gray-200">
             <div className="flex items-center justify-between px-6 pt-4">
@@ -396,7 +394,6 @@ export default function RequestsPage() {
             </div>
           </div>
 
-          {/* Search Bar */}
           <div className="p-4 border-b border-gray-200 bg-gray-50">
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -430,7 +427,6 @@ export default function RequestsPage() {
           </div>
         </div>
 
-        {/* Tab Content */}
         <div className="space-y-3">
           {filteredRequests.length === 0 ? (
             <div className="bg-white rounded-lg shadow-sm border-2 border-dashed border-gray-300 p-12 text-center">
