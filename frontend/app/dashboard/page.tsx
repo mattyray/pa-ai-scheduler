@@ -571,6 +571,38 @@ function PACalendar({ data, onDayClick, userId }: { data: any; onDayClick: (date
 
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+  const getNextDay = (dateStr: string) => {
+    const date = new Date(dateStr + 'T12:00:00');
+    date.setDate(date.getDate() + 1);
+    return date.toISOString().split('T')[0];
+  };
+
+  const isOvernightShift = (shift: any) => {
+    return shift.end_time < shift.start_time;
+  };
+
+  const getShiftsForDay = (dayDate: string, dayShifts: any[]) => {
+    const myShifts = (dayShifts || []).filter((s: any) => s.requested_by === userId);
+    
+    const overnightContinuations: any[] = [];
+    data.weeks.forEach((week: any) => {
+      week.days.forEach((day: any) => {
+        if (day.shifts) {
+          day.shifts.forEach((shift: any) => {
+            if (shift.requested_by === userId && isOvernightShift(shift) && getNextDay(shift.date) === dayDate) {
+              overnightContinuations.push({
+                ...shift,
+                isOvernightContinuation: true
+              });
+            }
+          });
+        }
+      });
+    });
+    
+    return [...myShifts, ...overnightContinuations];
+  };
+
   return (
     <div>
       <div className="grid grid-cols-7 gap-1 mb-2">
@@ -584,16 +616,18 @@ function PACalendar({ data, onDayClick, userId }: { data: any; onDayClick: (date
       {data.weeks.map((week: any, weekIndex: number) => (
         <div key={weekIndex} className="grid grid-cols-7 gap-1 mb-1">
           {week.days.map((day: any, dayIndex: number) => {
-            const date = new Date(day.date);
+            const date = new Date(day.date + 'T12:00:00');
             const today = new Date();
             const isToday = 
               date.getDate() === today.getDate() &&
               date.getMonth() === today.getMonth() &&
               date.getFullYear() === today.getFullYear();
 
-            const myShifts = day.shifts?.filter((s: any) => s.requested_by === userId) || [];
-            const hasApproved = myShifts.some((s: any) => s.status === 'APPROVED');
-            const hasPending = myShifts.some((s: any) => s.status === 'PENDING');
+            const allShiftsForDay = getShiftsForDay(day.date, day.shifts || []);
+            const hasApproved = allShiftsForDay.some((s: any) => s.status === 'APPROVED' && !s.isOvernightContinuation);
+            const hasPending = allShiftsForDay.some((s: any) => s.status === 'PENDING' && !s.isOvernightContinuation);
+            const hasOvernightStart = allShiftsForDay.some((s: any) => !s.isOvernightContinuation && isOvernightShift(s));
+            const hasOvernightContinuation = allShiftsForDay.some((s: any) => s.isOvernightContinuation);
 
             let statusColor = 'bg-white border-gray-200';
             if (hasApproved) {
@@ -617,13 +651,19 @@ function PACalendar({ data, onDayClick, userId }: { data: any; onDayClick: (date
                   <span className={`${isToday ? 'text-blue-600 font-bold' : 'text-gray-900'} ${!day.is_current_month ? 'text-gray-300' : ''}`}>
                     {date.getDate()}
                   </span>
-                  {day.is_current_month && myShifts.length > 0 && (
-                    <div className="flex gap-1 mt-1">
+                  {day.is_current_month && allShiftsForDay.length > 0 && (
+                    <div className="flex gap-1 mt-1 flex-wrap justify-center">
                       {hasApproved && (
                         <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
                       )}
                       {hasPending && (
                         <div className="w-1.5 h-1.5 bg-yellow-500 rounded-full"></div>
+                      )}
+                      {hasOvernightStart && (
+                        <div className="w-1.5 h-1.5 bg-purple-500 rounded-full"></div>
+                      )}
+                      {hasOvernightContinuation && (
+                        <div className="w-1.5 h-1.5 bg-purple-300 rounded-full"></div>
                       )}
                     </div>
                   )}
@@ -637,15 +677,15 @@ function PACalendar({ data, onDayClick, userId }: { data: any; onDayClick: (date
       <div className="mt-4 flex items-center justify-center space-x-4 text-xs text-gray-600">
         <div className="flex items-center space-x-1.5">
           <div className="w-3 h-3 bg-green-50 border-2 border-green-300 rounded"></div>
-          <span>Approved Shift</span>
+          <span>Approved</span>
         </div>
         <div className="flex items-center space-x-1.5">
           <div className="w-3 h-3 bg-yellow-50 border-2 border-yellow-300 rounded"></div>
           <span>Pending</span>
         </div>
         <div className="flex items-center space-x-1.5">
-          <div className="w-3 h-3 bg-white border-2 border-gray-200 rounded"></div>
-          <span>No Shifts</span>
+          <div className="w-1.5 h-1.5 bg-purple-500 rounded-full"></div>
+          <span>Overnight</span>
         </div>
       </div>
     </div>
