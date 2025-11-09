@@ -28,7 +28,9 @@ export default function DayView({
   }
 
   const hours = Array.from({ length: 24 }, (_, i) => i);
-  const shifts = data.shifts || [];
+  
+  const allShifts = data.shifts || [];
+  const shifts = isAdmin ? allShifts : allShifts.filter(s => s.requested_by === userId);
 
   const getShiftsCoveringHour = (hour: number) => {
     return shifts.filter((shift) => {
@@ -87,7 +89,7 @@ export default function DayView({
                 isCriticalTime ? 'bg-yellow-50/30' : ''
               }`}
             >
-              <div className="p-3 text-sm font-medium text-gray-500 border-r border-gray-100 w-24">
+              <div className="p-3 text-sm font-medium text-gray-500 border-r border-gray-100 w-24 flex-shrink-0">
                 {formatHour12(hour)}
               </div>
 
@@ -110,6 +112,7 @@ export default function DayView({
                   const color = getPAColor(paId);
                   const isPending = shift.status === 'PENDING';
                   const overnight = isOvernightShift(shift);
+                  const durationHours = parseFloat(shift.duration_hours || '1');
 
                   return (
                     <div
@@ -124,14 +127,16 @@ export default function DayView({
                         borderColor: color,
                         color: color,
                         top: '0.5rem',
-                        height: `${Number(shift.duration_hours) * 3}rem`,
+                        height: `${Math.max(durationHours * 3, 3)}rem`,
                         pointerEvents: 'auto',
+                        zIndex: 10,
                       } : {
                         backgroundColor: color,
                         color: '#fff',
                         top: '0.5rem',
-                        height: `${Number(shift.duration_hours) * 3}rem`,
+                        height: `${Math.max(durationHours * 3, 3)}rem`,
                         pointerEvents: 'auto',
+                        zIndex: 10,
                       }}
                     >
                       <div>

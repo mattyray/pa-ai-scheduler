@@ -198,6 +198,9 @@ export default function WeekView({
                           ? hour === 0
                           : hour === parseInt(shift.start_time.split(':')[0]);
 
+                        const isPending = shift.status === 'PENDING';
+                        const color = getPAColor(shift.requested_by);
+
                         return (
                           <div
                             key={`${shift.id}-${shiftIdx}`}
@@ -208,15 +211,19 @@ export default function WeekView({
                             }}
                           >
                             <div
-                              className="h-full rounded shadow-sm border-l-4 p-1.5 overflow-hidden transition-all group-hover:shadow-md"
+                              className={`h-full rounded shadow-sm p-1.5 overflow-hidden transition-all group-hover:shadow-md ${
+                                isPending ? 'border-2 border-dashed' : 'border-l-4'
+                              }`}
                               style={{
-                                backgroundColor: getPAColor(shift.requested_by) + '20',
-                                borderLeftColor: getPAColor(shift.requested_by),
+                                backgroundColor: isPending ? color + '20' : color + '30',
+                                borderColor: color,
+                                ...(isPending ? {} : { borderLeftColor: color }),
                               }}
                             >
                               {isFirstSegment && (
                                 <div className="text-xs">
-                                  <div className="font-semibold text-gray-900 truncate">
+                                  <div className={`font-semibold truncate ${isPending ? 'text-gray-900' : 'text-gray-900'}`}>
+                                    {isPending && '⏳ '}
                                     {shift.requested_by_name || shift.pa_name}
                                   </div>
                                   <div className="text-gray-600 text-[10px]">
@@ -242,11 +249,11 @@ export default function WeekView({
         </div>
       </div>
       
-      <div className="border-t border-gray-200 bg-blue-50 px-4 py-3">
+        <div className="border-t border-gray-200 bg-blue-50 px-4 py-3">
         <p className="text-sm text-blue-800">
-          💡 <strong>Tip:</strong> Click day headers to view day details, or click time slots to {isAdmin ? 'suggest' : 'request'} shifts
+            💡 <strong>Tip:</strong> Click day headers to view day details, or click time slots to {isAdmin ? 'suggest' : 'request'} shifts. ⏳ = Pending approval
         </p>
-      </div>
+        </div>
     </div>
   );
 }
