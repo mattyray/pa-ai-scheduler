@@ -7,34 +7,15 @@ import { suggestionsAPI, ShiftSuggestion } from '@/lib/suggestions-api';
 import { shiftsAPI } from '@/lib/shifts-api';
 import { schedulesAPI } from '@/lib/schedules-api';
 import { getPAColor } from '@/lib/pa-colors';
+import MonthView from '@/app/components/calendar/MonthView';
+import CreateShiftModal from '@/app/components/CreateShiftModal';
+import { parseDate, formatTime12Hour } from '@/app/components/calendar/utils';
 
 interface PAStats {
   upcoming_shifts: number;
   hours_this_week: number;
   pending_requests: number;
   hours_this_month: number;
-}
-
-function parseDate(dateStr: string): Date {
-  return new Date(dateStr + 'T12:00:00');
-}
-
-function isOvernightShift(shift: any): boolean {
-  return shift.end_time < shift.start_time;
-}
-
-function getNextDay(dateStr: string): string {
-  const date = parseDate(dateStr);
-  date.setDate(date.getDate() + 1);
-  return date.toISOString().split('T')[0];
-}
-
-function formatTime12Hour(time: string): string {
-  const [hours, minutes] = time.split(':');
-  const hour = parseInt(hours);
-  const ampm = hour >= 12 ? 'PM' : 'AM';
-  const hour12 = hour % 12 || 12;
-  return `${hour12}:${minutes} ${ampm}`;
 }
 
 export default function PADashboard() {
@@ -56,6 +37,13 @@ export default function PADashboard() {
   const [showDeclineModal, setShowDeclineModal] = useState(false);
   const [selectedSuggestion, setSelectedSuggestion] = useState<ShiftSuggestion | null>(null);
   const [declineReason, setDeclineReason] = useState('');
+
+  const [showCreateShiftModal, setShowCreateShiftModal] = useState(false);
+  const [createShiftDefaults, setCreateShiftDefaults] = useState({
+    date: '',
+    startTime: '06:00',
+    endTime: '09:00',
+  });
 
   useEffect(() => {
     if (!loading && !user) {
@@ -178,7 +166,12 @@ export default function PADashboard() {
   };
 
   const handleDayClick = (date: string) => {
-    router.push(`/schedule?view=week&date=${date}`);
+    setCreateShiftDefaults({
+      date: date,
+      startTime: '06:00',
+      endTime: '09:00',
+    });
+    setShowCreateShiftModal(true);
   };
 
   const goToPreviousMonth = () => {
@@ -340,13 +333,14 @@ export default function PADashboard() {
             </div>
             
             <div className="p-6">
-              <PACalendar 
+              <MonthView 
                 data={calendarData} 
                 onDayClick={handleDayClick}
                 userId={user?.id}
+                isAdmin={false}
               />
               <p className="mt-4 text-xs text-gray-500 text-center">
-                Click any day to view that week's schedule
+                Click any day to request a shift
               </p>
             </div>
           </div>
@@ -578,128 +572,18 @@ export default function PADashboard() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
 
-function PACalendar({ data, onDayClick, userId }: { data: any; onDayClick: (date: string) => void; userId?: number }) {
-  if (!data || !data.weeks) {
-    return (
-      <div className="text-center py-8 text-gray-500">
-        <p>Loading calendar...</p>
-      </div>
-    );
-  }
-
-  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-  const getShiftsForDay = (dayDate: string, dayShifts: any[]) => {
-    const myShifts = (dayShifts || []).filter((s: any) => s.requested_by === userId);
-    
-    const overnightContinuations: any[] = [];
-    data.weeks.forEach((week: any) => {
-      week.days.forEach((day: any) => {
-        if (day.shifts) {
-          day.shifts.forEach((shift: any) => {
-            if (shift.requested_by === userId && isOvernightShift(shift) && getNextDay(shift.date) === dayDate) {
-              overnightContinuations.push({
-                ...shift,
-                isOvernightContinuation: true
-              });
-            }
-          });
-        }
-      });
-    });
-    
-    return [...myShifts, ...overnightContinuations];
-  };
-
-  return (
-    <div>
-      <div className="grid grid-cols-7 gap-1 mb-2">
-        {dayNames.map((day) => (
-          <div key={day} className="text-center text-xs font-semibold text-gray-600 py-2">
-            {day}
-          </div>
-        ))}
-      </div>
-
-      {data.weeks.map((week: any, weekIndex: number) => (
-        <div key={weekIndex} className="grid grid-cols-7 gap-1 mb-1">
-          {week.days.map((day: any, dayIndex: number) => {
-            const date = parseDate(day.date);
-            const today = new Date();
-            const isToday = 
-              date.getDate() === today.getDate() &&
-              date.getMonth() === today.getMonth() &&
-              date.getFullYear() === today.getFullYear();
-
-            const allShiftsForDay = getShiftsForDay(day.date, day.shifts || []);
-            const hasApproved = allShiftsForDay.some((s: any) => s.status === 'APPROVED' && !s.isOvernightContinuation);
-            const hasPending = allShiftsForDay.some((s: any) => s.status === 'PENDING' && !s.isOvernightContinuation);
-            const hasOvernightStart = allShiftsForDay.some((s: any) => !s.isOvernightContinuation && isOvernightShift(s));
-            const hasOvernightContinuation = allShiftsForDay.some((s: any) => s.isOvernightContinuation);
-
-            let statusColor = 'bg-white border-gray-200';
-            if (hasApproved) {
-              statusColor = 'bg-green-50 border-green-300';
-            } else if (hasPending) {
-              statusColor = 'bg-yellow-50 border-yellow-300';
-            }
-
-            return (
-              <button
-                key={dayIndex}
-                onClick={() => day.is_current_month && onDayClick(day.date)}
-                disabled={!day.is_current_month}
-                className={`aspect-square p-2 text-sm border-2 rounded-lg transition-all ${statusColor} ${
-                  !day.is_current_month 
-                    ? 'text-gray-300 bg-gray-50 border-gray-100 cursor-default' 
-                    : 'hover:shadow-md cursor-pointer'
-                } ${isToday ? 'ring-2 ring-blue-500' : ''}`}
-              >
-                <div className="flex flex-col items-center justify-center h-full">
-                  <span className={`${isToday ? 'text-blue-600 font-bold' : 'text-gray-900'} ${!day.is_current_month ? 'text-gray-300' : ''}`}>
-                    {date.getDate()}
-                  </span>
-                  {day.is_current_month && allShiftsForDay.length > 0 && (
-                    <div className="flex gap-1 mt-1 flex-wrap justify-center">
-                      {hasApproved && (
-                        <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
-                      )}
-                      {hasPending && (
-                        <div className="w-1.5 h-1.5 bg-yellow-500 rounded-full"></div>
-                      )}
-                      {hasOvernightStart && (
-                        <div className="w-1.5 h-1.5 bg-purple-500 rounded-full"></div>
-                      )}
-                      {hasOvernightContinuation && (
-                        <div className="w-1.5 h-1.5 bg-purple-300 rounded-full"></div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      ))}
-
-      <div className="mt-4 flex items-center justify-center space-x-4 text-xs text-gray-600">
-        <div className="flex items-center space-x-1.5">
-          <div className="w-3 h-3 bg-green-50 border-2 border-green-300 rounded"></div>
-          <span>Approved</span>
-        </div>
-        <div className="flex items-center space-x-1.5">
-          <div className="w-3 h-3 bg-yellow-50 border-2 border-yellow-300 rounded"></div>
-          <span>Pending</span>
-        </div>
-        <div className="flex items-center space-x-1.5">
-          <div className="w-1.5 h-1.5 bg-purple-500 rounded-full"></div>
-          <span>Overnight</span>
-        </div>
-      </div>
+      <CreateShiftModal
+        isOpen={showCreateShiftModal}
+        onClose={() => setShowCreateShiftModal(false)}
+        onSuccess={() => {
+          setShowCreateShiftModal(false);
+          loadDashboardData();
+        }}
+        defaultDate={createShiftDefaults.date}
+        defaultStartTime={createShiftDefaults.startTime}
+        defaultEndTime={createShiftDefaults.endTime}
+      />
     </div>
   );
 }
