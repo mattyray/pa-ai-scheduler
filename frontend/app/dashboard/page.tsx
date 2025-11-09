@@ -8,7 +8,6 @@ import { shiftsAPI } from '@/lib/shifts-api';
 import { schedulesAPI } from '@/lib/schedules-api';
 import { getPAColor } from '@/lib/pa-colors';
 import MonthView from '@/app/components/calendar/MonthView';
-import CreateShiftModal from '@/app/components/CreateShiftModal';
 import { parseDate, formatTime12Hour } from '@/app/components/calendar/utils';
 
 interface PAStats {
@@ -37,13 +36,6 @@ export default function PADashboard() {
   const [showDeclineModal, setShowDeclineModal] = useState(false);
   const [selectedSuggestion, setSelectedSuggestion] = useState<ShiftSuggestion | null>(null);
   const [declineReason, setDeclineReason] = useState('');
-
-  const [showCreateShiftModal, setShowCreateShiftModal] = useState(false);
-  const [createShiftDefaults, setCreateShiftDefaults] = useState({
-    date: '',
-    startTime: '06:00',
-    endTime: '09:00',
-  });
 
   useEffect(() => {
     if (!loading && !user) {
@@ -166,12 +158,7 @@ export default function PADashboard() {
   };
 
   const handleDayClick = (date: string) => {
-    setCreateShiftDefaults({
-      date: date,
-      startTime: '06:00',
-      endTime: '09:00',
-    });
-    setShowCreateShiftModal(true);
+    router.push(`/schedule?view=week&date=${date}`);
   };
 
   const goToPreviousMonth = () => {
@@ -340,7 +327,7 @@ export default function PADashboard() {
                 isAdmin={false}
               />
               <p className="mt-4 text-xs text-gray-500 text-center">
-                Click any day to request a shift
+                Click any day to view that week's schedule
               </p>
             </div>
           </div>
@@ -572,18 +559,6 @@ export default function PADashboard() {
           </div>
         </div>
       )}
-
-      <CreateShiftModal
-        isOpen={showCreateShiftModal}
-        onClose={() => setShowCreateShiftModal(false)}
-        onSuccess={() => {
-          setShowCreateShiftModal(false);
-          loadDashboardData();
-        }}
-        defaultDate={createShiftDefaults.date}
-        defaultStartTime={createShiftDefaults.startTime}
-        defaultEndTime={createShiftDefaults.endTime}
-      />
     </div>
   );
 }
