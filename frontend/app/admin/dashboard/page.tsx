@@ -6,25 +6,15 @@ import { useAuth } from '@/lib/auth-context';
 import { schedulesAPI } from '@/lib/schedules-api';
 import { shiftsAPI } from '@/lib/shifts-api';
 import { getPAColor } from '@/lib/pa-colors';
+import MonthView from '@/app/components/calendar/MonthView';
 import SuggestShiftModal from './SuggestShiftModal';
+import { parseDate, formatTime12Hour } from '@/app/components/calendar/utils';
 
 interface DashboardStats {
   pending_requests: number;
   coverage_gaps: number;
   total_shifts: number;
   active_pas: number;
-}
-
-function parseDate(dateStr: string): Date {
-  return new Date(dateStr + 'T12:00:00');
-}
-
-function formatTime12Hour(time: string): string {
-  const [hours, minutes] = time.split(':');
-  const hour = parseInt(hours);
-  const ampm = hour >= 12 ? 'PM' : 'AM';
-  const hour12 = hour % 12 || 12;
-  return `${hour12}:${minutes} ${ampm}`;
 }
 
 export default function AdminDashboard() {
@@ -286,7 +276,12 @@ export default function AdminDashboard() {
             </div>
             
             <div className="p-6">
-              <MiniMonthCalendar data={calendarData} onDayClick={handleDayClick} />
+              <MonthView 
+                data={calendarData} 
+                onDayClick={handleDayClick}
+                isAdmin={true}
+                showCoverage={true}
+              />
               <p className="mt-4 text-xs text-gray-500 text-center">
                 Click any day to view that week's schedule
               </p>
@@ -460,83 +455,6 @@ export default function AdminDashboard() {
         defaultStartTime={selectedGap?.start_time}
         defaultEndTime={selectedGap?.end_time}
       />
-    </div>
-  );
-}
-
-function MiniMonthCalendar({ data, onDayClick }: { data: any; onDayClick: (date: string) => void }) {
-  if (!data) {
-    return (
-      <div className="text-center py-8">
-        <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-blue-600 border-r-transparent"></div>
-        <p className="mt-2 text-sm text-gray-500">Loading calendar...</p>
-      </div>
-    );
-  }
-
-  const getCoverageColor = (coverage: any) => {
-    if (!coverage) return 'bg-red-50 border-red-200';
-    if (coverage.morning_covered && coverage.evening_covered) return 'bg-green-50 border-green-200';
-    if (coverage.morning_covered || coverage.evening_covered) return 'bg-yellow-50 border-yellow-200';
-    return 'bg-red-50 border-red-200';
-  };
-
-  return (
-    <div>
-      <div className="grid grid-cols-7 gap-1 mb-2">
-        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-          <div key={day} className="text-center text-xs font-semibold text-gray-600 py-2">
-            {day}
-          </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-7 gap-1">
-        {data.weeks?.map((week: any, weekIdx: number) =>
-          week.days?.map((day: any, dayIdx: number) => {
-            const date = parseDate(day.date);
-            const today = new Date();
-            const isToday = 
-              date.getDate() === today.getDate() &&
-              date.getMonth() === today.getMonth() &&
-              date.getFullYear() === today.getFullYear();
-            const coverageColor = getCoverageColor(day.coverage);
-
-            return (
-              <button
-                key={`${weekIdx}-${dayIdx}`}
-                onClick={() => day.is_current_month && onDayClick(day.date)}
-                className={`aspect-square p-2 rounded-md text-sm font-medium border-2 transition-all ${
-                  !day.is_current_month 
-                    ? 'text-gray-300 bg-gray-50 border-gray-100 cursor-default' 
-                    : `${coverageColor} hover:shadow-md cursor-pointer`
-                } ${isToday ? 'ring-2 ring-blue-500' : ''}`}
-              >
-                <div className="flex flex-col items-center justify-center h-full">
-                  <span className={`${isToday ? 'text-blue-600 font-bold' : 'text-gray-900'} ${!day.is_current_month ? 'text-gray-300' : ''}`}>
-                    {date.getDate()}
-                  </span>
-                </div>
-              </button>
-            );
-          })
-        )}
-      </div>
-
-      <div className="mt-4 flex items-center justify-center space-x-4 text-xs text-gray-600">
-        <div className="flex items-center space-x-1.5">
-          <div className="w-3 h-3 bg-green-100 border-2 border-green-300 rounded"></div>
-          <span>Full Coverage</span>
-        </div>
-        <div className="flex items-center space-x-1.5">
-          <div className="w-3 h-3 bg-yellow-100 border-2 border-yellow-300 rounded"></div>
-          <span>Partial</span>
-        </div>
-        <div className="flex items-center space-x-1.5">
-          <div className="w-3 h-3 bg-red-100 border-2 border-red-300 rounded"></div>
-          <span>No Coverage</span>
-        </div>
-      </div>
     </div>
   );
 }
