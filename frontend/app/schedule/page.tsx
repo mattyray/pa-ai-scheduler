@@ -1,5 +1,6 @@
 'use client';
 
+import { Suspense } from 'react';
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
@@ -14,7 +15,7 @@ import { shiftsAPI } from '@/lib/shifts-api';
 import { api } from '@/lib/api';
 import { parseDate, getISOWeek } from '@/app/components/calendar/utils';
 
-export default function SchedulePage() {
+function SchedulePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, logout, loading: authLoading } = useAuth();
@@ -690,5 +691,20 @@ function ApproveRejectModal({ isOpen, shift, onClose, onSuccess }: { isOpen: boo
         </div>
       </div>
     </div>
+  );
+}
+
+export default function SchedulePage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    }>
+      <SchedulePageContent />
+    </Suspense>
   );
 }
