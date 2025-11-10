@@ -1,4 +1,4 @@
-import { api } from './api';
+import { apiClient } from './api';
 
 export interface PaginatedResponse<T> {
   count: number;
@@ -27,37 +27,37 @@ export interface CreateSchedulePeriod {
 }
 
 export const schedulesAPI = {
-  listPeriods: () => api.get<PaginatedResponse<SchedulePeriod>>('/api/schedule-periods/'),
+  listPeriods: () => apiClient.get<PaginatedResponse<SchedulePeriod>>('/api/schedule-periods/'),
   
-  getPeriod: (id: number) => api.get(`/api/schedule-periods/${id}/`),
+  getPeriod: (id: number) => apiClient.get(`/api/schedule-periods/${id}/`),
   
   createPeriod: (data: CreateSchedulePeriod) => 
-    api.post('/api/schedule-periods/', data),
+    apiClient.post('/api/schedule-periods/', data),
   
   updatePeriod: (id: number, data: Partial<CreateSchedulePeriod>) => 
-    api.patch(`/api/schedule-periods/${id}/`, data),
+    apiClient.patch(`/api/schedule-periods/${id}/`, data),
   
   updatePeriodStatus: (id: number, status: string) =>
-    api.patch(`/api/schedule-periods/${id}/`, { status }),
+    apiClient.patch(`/api/schedule-periods/${id}/`, { status }),
   
   deletePeriod: (id: number) => 
-    api.delete(`/api/schedule-periods/${id}/`),
+    apiClient.delete(`/api/schedule-periods/${id}/`),
   
   finalizePeriod: (id: number) => 
-    api.post(`/api/schedule-periods/${id}/finalize/`),
+    apiClient.post(`/api/schedule-periods/${id}/finalize/`),
   
   getMonthView: (year: number, month: number, paId?: number) => {
     const params = paId ? `?pa_id=${paId}` : '';
-    return api.get(`/api/calendar/month/${year}/${month}/${params}`);
+    return apiClient.get(`/api/calendar/month/${year}/${month}/${params}`);
   },
   
   getWeekView: (year: number, week: number, paId?: number) => {
     const params = paId ? `?pa_id=${paId}` : '';
-    return api.get(`/api/calendar/week/${year}/${week}/${params}`);
+    return apiClient.get(`/api/calendar/week/${year}/${week}/${params}`);
   },
   
   getDayView: (date: string, paId?: number) => {
     const params = paId ? `?pa_id=${paId}` : '';
-    return api.get(`/api/calendar/day/${date}/${params}`);
+    return apiClient.get(`/api/calendar/day/${date}/${params}`);
   },
 };

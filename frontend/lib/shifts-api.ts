@@ -1,4 +1,4 @@
-import { api } from './api';
+import { apiClient } from './api';
 
 export interface ShiftRequest {
   id: number;
@@ -39,26 +39,26 @@ export interface EditShiftData {
 
 export const shiftsAPI = {
   listRequests: () => 
-    api.get<{ results: ShiftRequest[] }>('/api/shifts/requests/'),
+    apiClient.get<{ results: ShiftRequest[] }>('/api/shifts/requests/'),
   
   listShifts: () => 
-    api.get<{ results: ShiftRequest[] }>('/api/shifts/requests/'),
+    apiClient.get<{ results: ShiftRequest[] }>('/api/shifts/requests/'),
   
   createRequest: (data: CreateShiftRequestData) => 
-    api.post<ShiftRequest>('/api/shifts/requests/', data),
+    apiClient.post<ShiftRequest>('/api/shifts/requests/', data),
   
   getRequest: (id: number) => 
-    api.get<ShiftRequest>(`/api/shifts/requests/${id}/`),
+    apiClient.get<ShiftRequest>(`/api/shifts/requests/${id}/`),
   
   approveRequest: (id: number, admin_notes?: string) => 
-    api.post<ShiftRequest>(`/api/shifts/requests/${id}/approve/`, { admin_notes }),
+    apiClient.post<ShiftRequest>(`/api/shifts/requests/${id}/approve/`, { admin_notes }),
   
   rejectRequest: (id: number, rejected_reason: string) => 
-    api.post<ShiftRequest>(`/api/shifts/requests/${id}/reject/`, { rejected_reason }),
+    apiClient.post<ShiftRequest>(`/api/shifts/requests/${id}/reject/`, { rejected_reason }),
   
   editShift: (id: number, data: EditShiftData) => 
-    api.patch<ShiftRequest>(`/api/shifts/requests/${id}/edit/`, data),
+    apiClient.patch<ShiftRequest>(`/api/shifts/requests/${id}/edit/`, data),
   
   cancelRequest: (id: number, cancellation_reason?: string) => 
-    api.post<ShiftRequest>(`/api/shifts/requests/${id}/cancel/`, { cancellation_reason }),
+    apiClient.post<ShiftRequest>(`/api/shifts/requests/${id}/cancel/`, { cancellation_reason }),
 };

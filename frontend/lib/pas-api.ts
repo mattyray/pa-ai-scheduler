@@ -1,4 +1,4 @@
-import { api } from './api';
+import { apiClient } from './api';
 
 export interface PA {
   id: number;
@@ -55,7 +55,6 @@ export interface Shift {
   created_at?: string;
 }
 
-// Paginated response type
 export interface PaginatedResponse<T> {
   count: number;
   next: string | null;
@@ -64,17 +63,13 @@ export interface PaginatedResponse<T> {
 }
 
 export const pasAPI = {
-  // List all PAs (returns paginated response)
-  list: () => api.get<PaginatedResponse<PA>>('/api/auth/pas/'),
+  list: () => apiClient.get<PaginatedResponse<PA>>('/api/auth/pas/'),
   
-  // Get individual PA details
-  get: (id: number) => api.get<PADetail>(`/api/auth/pas/${id}/`),
+  get: (id: number) => apiClient.get<PADetail>(`/api/auth/pas/${id}/`),
   
-  // Update PA profile (max hours, notes)
   updateProfile: (userId: number, data: { max_hours_per_week?: number; notes?: string }) =>
-    api.patch(`/api/auth/pas/${userId}/profile/`, data),
+    apiClient.patch(`/api/auth/pas/${userId}/profile/`, data),
   
-  // Get PA shift history with filters
   getShiftHistory: (id: number, params?: { status?: string; start_date?: string; end_date?: string }) =>
-    api.get(`/api/auth/pas/${id}/shift-history/`, { params }),
+    apiClient.get(`/api/auth/pas/${id}/shift-history/`, { params }),
 };

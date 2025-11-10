@@ -1,4 +1,4 @@
-import { api } from './api';
+import { apiClient } from './api';
 
 export interface ShiftSuggestion {
   id: number;
@@ -30,20 +30,20 @@ export interface CreateSuggestionData {
 }
 
 export const suggestionsAPI = {
-  list: () => api.get<ShiftSuggestion[]>('/api/shifts/suggestions/'),
+  list: () => apiClient.get<ShiftSuggestion[]>('/api/shifts/suggestions/'),
   
   create: (data: CreateSuggestionData) => 
-    api.post<ShiftSuggestion>('/api/shifts/suggestions/', data),
+    apiClient.post<ShiftSuggestion>('/api/shifts/suggestions/', data),
   
   get: (id: number) => 
-    api.get<ShiftSuggestion>(`/api/shifts/suggestions/${id}/`),
+    apiClient.get<ShiftSuggestion>(`/api/shifts/suggestions/${id}/`),
   
   accept: (id: number) => 
-    api.post<ShiftSuggestion>(`/api/shifts/suggestions/${id}/accept/`),
+    apiClient.post<ShiftSuggestion>(`/api/shifts/suggestions/${id}/accept/`),
   
   decline: (id: number, reason?: string) => 
-    api.post<ShiftSuggestion>(`/api/shifts/suggestions/${id}/decline/`, { decline_reason: reason }),
+    apiClient.post<ShiftSuggestion>(`/api/shifts/suggestions/${id}/decline/`, { decline_reason: reason }),
   
   delete: (id: number) => 
-    api.delete(`/api/shifts/suggestions/${id}/`),
+    apiClient.delete(`/api/shifts/suggestions/${id}/`),
 };
