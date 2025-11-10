@@ -30,7 +30,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Load user from localStorage on mount
   useEffect(() => {
     const loadUser = () => {
       const storedUser = localStorage.getItem('user');
@@ -47,7 +46,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const response = await authAPI.login(email, password);
     const { user: userData, tokens } = response.data;
 
-    // Store tokens and user
     localStorage.setItem('access_token', tokens.access);
     localStorage.setItem('refresh_token', tokens.refresh);
     localStorage.setItem('user', JSON.stringify(userData));
@@ -59,9 +57,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const refreshToken = localStorage.getItem('refresh_token');
     
     if (refreshToken) {
-      authAPI.logout(refreshToken).catch(() => {
-        // Ignore errors on logout
-      });
+      authAPI.logout(refreshToken).catch(() => {});
     }
 
     localStorage.removeItem('access_token');
