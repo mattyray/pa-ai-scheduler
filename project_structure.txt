@@ -124,7 +124,15 @@
 │   │   │       │   └── page.tsx
 │   │   │       └── page.tsx
 │   │   ├── components
+│   │   │   ├── calendar
+│   │   │   │   ├── CalendarHeader.tsx
+│   │   │   │   ├── DayView.tsx
+│   │   │   │   ├── MonthView.tsx
+│   │   │   │   ├── types.ts
+│   │   │   │   ├── utils.ts
+│   │   │   │   └── WeekView.tsx
 │   │   │   ├── CancelShiftModal.tsx
+│   │   │   ├── CreateShiftModal.tsx
 │   │   │   └── EditShiftModal.tsx
 │   │   ├── dashboard
 │   │   │   └── page.tsx
@@ -172,4 +180,4 @@
 ├── README.md
 └── test_websocket.py
 
-38 directories, 135 files
+39 directories, 142 files
