@@ -50,8 +50,21 @@ class RegisterSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         """Create new user with hashed password"""
         validated_data.pop('password_confirm')
+        
+        # Auto-generate username from email
+        email = validated_data['email']
+        username = email.split('@')[0]
+        
+        # Ensure username is unique
+        base_username = username
+        counter = 1
+        while User.objects.filter(username=username).exists():
+            username = f"{base_username}{counter}"
+            counter += 1
+        
         user = User.objects.create_user(
             email=validated_data['email'],
+            username=username,
             password=validated_data['password'],
             first_name=validated_data.get('first_name', ''),
             last_name=validated_data.get('last_name', ''),
