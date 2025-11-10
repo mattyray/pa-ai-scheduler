@@ -1,0 +1,18 @@
+app = "pa-scheduler-worker"
+primary_region = "ewr"
+
+[build]
+  dockerfile = "Dockerfile.worker"
+
+[env]
+  DJANGO_SETTINGS_MODULE = "config.production_settings"
+  PYTHONUNBUFFERED = "1"
+
+[processes]
+  worker = "celery -A config worker -l info --concurrency=2"
+  beat = "celery -A config beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler"
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
