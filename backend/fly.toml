@@ -22,7 +22,8 @@ primary_region = "ewr"
     interval = "15s"
     method = "GET"
     timeout = "10s"
-    path = "/admin/"
+    path = "/api/auth/users/"
+    protocol = "http"
 
 [[vm]]
   memory = "1gb"
