@@ -15,6 +15,18 @@ ALLOWED_HOSTS = [
 if os.environ.get('ALLOWED_HOSTS'):
     ALLOWED_HOSTS.extend(os.environ.get('ALLOWED_HOSTS').split(','))
 
+MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
+    'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.middleware.common.CommonMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
+    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+]
+
 CSRF_TRUSTED_ORIGINS = [
     'https://*.fly.dev',
     'https://pa-scheduler.fly.dev',
@@ -45,6 +57,9 @@ CHANNEL_LAYERS = {
 }
 
 STATIC_ROOT = '/app/staticfiles'
+STATIC_URL = '/static/'
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
 MEDIA_ROOT = '/data/media'
 
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
