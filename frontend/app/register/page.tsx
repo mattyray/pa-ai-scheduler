@@ -21,8 +21,26 @@ export default function RegisterPage() {
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  const formatPhoneNumber = (value: string) => {
+    const phoneNumber = value.replace(/[^\d]/g, '');
+    const phoneNumberLength = phoneNumber.length;
+    
+    if (phoneNumberLength < 4) return phoneNumber;
+    if (phoneNumberLength < 7) {
+      return `(${phoneNumber.slice(0, 3)}) ${phoneNumber.slice(3)}`;
+    }
+    return `(${phoneNumber.slice(0, 3)}) ${phoneNumber.slice(3, 6)}-${phoneNumber.slice(6, 10)}`;
+  };
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    
+    if (name === 'phone_number') {
+      const formatted = formatPhoneNumber(value);
+      setFormData({ ...formData, [name]: formatted });
+    } else {
+      setFormData({ ...formData, [name]: value });
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -30,8 +48,18 @@ export default function RegisterPage() {
     setError('');
     setLoading(true);
 
+    const phoneDigits = formData.phone_number.replace(/[^\d]/g, '');
+    if (phoneDigits.length !== 10) {
+      setError('Please enter a valid 10-digit phone number');
+      setLoading(false);
+      return;
+    }
+
     try {
-      await authAPI.register(formData);
+      await authAPI.register({
+        ...formData,
+        phone_number: formData.phone_number
+      });
       setSuccess(true);
     } catch (err: any) {
       console.error('Registration error:', err);
@@ -170,9 +198,11 @@ export default function RegisterPage() {
                 required
                 value={formData.phone_number}
                 onChange={handleChange}
+                maxLength={14}
                 className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                 placeholder="(555) 123-4567"
               />
+              <p className="mt-1 text-xs text-gray-500">Format: (555) 123-4567</p>
             </div>
 
             <div>
