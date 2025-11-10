@@ -8,18 +8,21 @@ ALLOWED_HOSTS = [
     'pa-scheduler.fly.dev',
     'localhost',
     '127.0.0.1',
+    '.internal',
+    '172.19.3.162',
 ]
 
 if os.environ.get('ALLOWED_HOSTS'):
-    ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS').split(',')
+    ALLOWED_HOSTS.extend(os.environ.get('ALLOWED_HOSTS').split(','))
 
 CSRF_TRUSTED_ORIGINS = [
     'https://*.fly.dev',
     'https://pa-scheduler.fly.dev',
+    'https://pa-scheduler.netlify.app',
 ]
 
 if os.environ.get('CSRF_TRUSTED_ORIGINS'):
-    CSRF_TRUSTED_ORIGINS = os.environ.get('CSRF_TRUSTED_ORIGINS').split(',')
+    CSRF_TRUSTED_ORIGINS.extend(os.environ.get('CSRF_TRUSTED_ORIGINS').split(','))
 
 DATABASES['default'] = dj_database_url.config(
     default=os.environ.get('DATABASE_URL'),
