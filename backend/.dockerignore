@@ -1,14 +1,10 @@
-# Git
 .git
 .gitignore
 
-# Docker
 .docker
 Dockerfile
-Dockerfile.prod
 docker-compose*
 
-# Python
 __pycache__
 *.pyc
 *.pyo
@@ -28,14 +24,12 @@ htmlcov
 .dmypy.json
 dmypy.json
 
-# IDEs
 .vscode
 .idea
 *.swp
 *.swo
 *~
 
-# OS
 .DS_Store
 .DS_Store?
 ._*
@@ -44,27 +38,22 @@ dmypy.json
 ehthumbs.db
 Thumbs.db
 
-# Logs
 logs
 *.log
 npm-debug.log*
 
-# Environment
 .env
 .env.local
 .env.development
 .env.production
 
-# Database
 *.sqlite3
 db.sqlite3
 
-# Media files
 media/
-
-# Static files (will be collected in container)
 staticfiles/
 
-# Node (if any)
 node_modules
 npm-debug.log
+
+README.md
