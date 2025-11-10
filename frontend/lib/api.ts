@@ -2,7 +2,7 @@ import axios from 'axios';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8006';
 
-export const api = axios.create({
+export const apiClient = axios.create({
   baseURL: API_URL,
   headers: {
     'Content-Type': 'application/json',
@@ -23,7 +23,7 @@ const processQueue = (error: any, token: string | null = null) => {
   failedQueue = [];
 };
 
-api.interceptors.request.use(
+apiClient.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('access_token');
     if (token) {
@@ -36,7 +36,7 @@ api.interceptors.request.use(
   }
 );
 
-api.interceptors.response.use(
+apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
@@ -52,7 +52,7 @@ api.interceptors.response.use(
           failedQueue.push({ resolve, reject });
         }).then(token => {
           originalRequest.headers.Authorization = `Bearer ${token}`;
-          return api(originalRequest);
+          return apiClient(originalRequest);
         }).catch(err => {
           return Promise.reject(err);
         });
@@ -78,7 +78,7 @@ api.interceptors.response.use(
         processQueue(null, access);
         
         originalRequest.headers.Authorization = `Bearer ${access}`;
-        return api(originalRequest);
+        return apiClient(originalRequest);
       } catch (refreshError) {
         processQueue(refreshError, null);
         
@@ -109,23 +109,25 @@ export const authAPI = {
     first_name: string;
     last_name: string;
     phone_number: string;
-  }) => api.post('/api/auth/register/', data),
+  }) => apiClient.post('/api/auth/register/', data),
 
   login: (email: string, password: string) => 
-    api.post('/api/auth/login/', { email, password }),
+    apiClient.post('/api/auth/login/', { email, password }),
 
   verifyEmail: (token: string) => 
-    api.post('/api/auth/verify-email/', { token }),
+    apiClient.post('/api/auth/verify-email/', { token }),
 
   requestPasswordReset: (email: string) => 
-    api.post('/api/auth/password-reset/', { email }),
+    apiClient.post('/api/auth/password-reset/', { email }),
 
   resetPassword: (token: string, password: string, password_confirm: string) => 
-    api.post('/api/auth/password-reset-confirm/', { token, password, password_confirm }),
+    apiClient.post('/api/auth/password-reset-confirm/', { token, password, password_confirm }),
 
   logout: (refreshToken: string) => 
-    api.post('/api/auth/logout/', { refresh: refreshToken }),
+    apiClient.post('/api/auth/logout/', { refresh: refreshToken }),
 
   getCurrentUser: () => 
-    api.get('/api/auth/me/'),
+    apiClient.get('/api/auth/me/'),
 };
+
+export { apiClient as api };
