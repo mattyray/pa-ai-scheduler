@@ -129,3 +129,4 @@ export const authAPI = {
   getCurrentUser: () => 
     apiClient.get('/api/auth/me/'),
 };
+export { apiClient as api };
