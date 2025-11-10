@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
-from .models import User, PAProfile, PAScheduleStats  # <-- ADD PAProfile and PAScheduleStats here
+from .models import User, PAProfile, PAScheduleStats
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -29,7 +29,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['email', 'username', 'password', 'password_confirm', 
+        fields = ['email', 'password', 'password_confirm', 
                   'first_name', 'last_name', 'phone_number']
 
     def validate_email(self, value):
@@ -52,12 +52,11 @@ class RegisterSerializer(serializers.ModelSerializer):
         validated_data.pop('password_confirm')
         user = User.objects.create_user(
             email=validated_data['email'],
-            username=validated_data['username'],
             password=validated_data['password'],
             first_name=validated_data.get('first_name', ''),
             last_name=validated_data.get('last_name', ''),
             phone_number=validated_data['phone_number'],
-            role='PA'  # Default role is PA
+            role='PA'
         )
         return user
 
@@ -80,10 +79,9 @@ class LoginSerializer(serializers.Serializer):
         password = attrs.get('password')
 
         if email and password:
-            # Try to authenticate
             user = authenticate(
                 request=self.context.get('request'),
-                username=email,  # We use email as username
+                username=email,
                 password=password
             )
 
@@ -157,8 +155,7 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
         if not value:
             raise serializers.ValidationError("Phone number is required.")
         return value
-    
-# ============= PA MANAGEMENT SERIALIZERS =============
+
 
 class PAProfileSerializer(serializers.ModelSerializer):
     """Serializer for PA profile data"""

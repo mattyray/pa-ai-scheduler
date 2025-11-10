@@ -21,9 +21,8 @@ class User(AbstractUser):
     
     is_email_verified = models.BooleanField(default=False)
     
-    # Make email the login field instead of username
     USERNAME_FIELD = 'email'
-    REQUIRED_FIELDS = ['username', 'first_name', 'last_name']
+    REQUIRED_FIELDS = ['first_name', 'last_name']
     
     class Meta:
         db_table = 'users'
@@ -34,9 +33,10 @@ class User(AbstractUser):
         return f"{self.email} ({self.get_role_display()})"
     
     def save(self, *args, **kwargs):
-        # Normalize email to lowercase
         if self.email:
             self.email = self.email.lower()
+        if not self.username:
+            self.username = self.email.split('@')[0]
         super().save(*args, **kwargs)
 
 
@@ -102,7 +102,6 @@ class PAProfile(models.Model):
         limit_choices_to={'role': 'PA'}
     )
     
-    # Preferred working hours
     preferred_start_time = models.TimeField(
         null=True,
         blank=True,
@@ -114,20 +113,17 @@ class PAProfile(models.Model):
         help_text="Preferred shift end time (e.g., 16:00)"
     )
     
-    # Preferred working days (stored as JSON array)
     preferred_days = models.JSONField(
         default=list,
         blank=True,
         help_text='List of preferred days: ["monday", "tuesday", ...]'
     )
     
-    # Weekly hour limit
     max_hours_per_week = models.IntegerField(
         default=40,
         help_text="Maximum hours this PA can work per week"
     )
     
-    # Admin notes about this PA
     notes = models.TextField(
         blank=True,
         help_text="Internal notes about this PA (admin only)"
@@ -157,12 +153,10 @@ class PAScheduleStats(models.Model):
         limit_choices_to={'role': 'PA'}
     )
     
-    # Lifetime statistics
     total_shifts_worked = models.IntegerField(default=0)
     total_hours_worked = models.DecimalField(max_digits=8, decimal_places=2, default=0)
     average_hours_per_week = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     
-    # Pattern data (stored as JSON)
     most_common_days = models.JSONField(
         default=dict,
         blank=True,
@@ -177,7 +171,6 @@ class PAScheduleStats(models.Model):
         help_text="Average shift duration in hours"
     )
     
-    # Behavioral patterns
     preferred_shift_pattern = models.CharField(
         max_length=20,
         blank=True,
@@ -189,7 +182,6 @@ class PAScheduleStats(models.Model):
         ]
     )
     
-    # Reliability metrics
     reliability_score = models.DecimalField(
         max_digits=5,
         decimal_places=2,
@@ -197,7 +189,6 @@ class PAScheduleStats(models.Model):
         help_text="Percentage of completed shifts without cancellation (0-100)"
     )
     
-    # Request timing
     typical_request_timing = models.IntegerField(
         null=True,
         blank=True,
@@ -209,7 +200,6 @@ class PAScheduleStats(models.Model):
         help_text="Average number of consecutive days worked"
     )
     
-    # Last activity
     last_worked_date = models.DateField(null=True, blank=True)
     last_calculated = models.DateTimeField(auto_now=True)
     
