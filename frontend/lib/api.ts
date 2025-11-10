@@ -41,22 +41,13 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    console.log('🔴 API Error:', {
-      status: error.response?.status,
-      url: originalRequest?.url,
-      method: originalRequest?.method,
-      hasRetried: originalRequest._retry
-    });
-
     if (error.response?.status === 403) {
-      console.error('❌ 403 Forbidden');
       alert(`Access Denied: ${error.response?.data?.error || error.response?.data?.detail || 'You do not have permission to perform this action'}`);
       return Promise.reject(error);
     }
 
     if (error.response?.status === 401 && !originalRequest._retry) {
       if (isRefreshing) {
-        console.log('⏳ Token refresh already in progress, queueing request...');
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
         }).then(token => {
@@ -70,13 +61,10 @@ api.interceptors.response.use(
       originalRequest._retry = true;
       isRefreshing = true;
 
-      console.log('🔄 Starting token refresh...');
-
       try {
         const refreshToken = localStorage.getItem('refresh_token');
         
         if (!refreshToken) {
-          console.log('❌ No refresh token found');
           throw new Error('No refresh token');
         }
 
@@ -87,14 +75,11 @@ api.interceptors.response.use(
         const { access } = response.data;
         localStorage.setItem('access_token', access);
         
-        console.log('✅ Token refreshed successfully');
-        
         processQueue(null, access);
         
         originalRequest.headers.Authorization = `Bearer ${access}`;
         return api(originalRequest);
       } catch (refreshError) {
-        console.log('❌ Token refresh failed, logging out...');
         processQueue(refreshError, null);
         
         localStorage.removeItem('access_token');
