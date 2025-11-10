@@ -22,7 +22,7 @@ primary_region = "ewr"
     interval = "15s"
     method = "GET"
     timeout = "10s"
-    path = "/api/auth/users/"
+    path = "/health/"
     protocol = "http"
 
 [[vm]]
