@@ -361,4 +361,5 @@ class PAProfileUpdateSerializer(serializers.ModelSerializer):
         model = PAProfile
         fields = ['max_hours_per_week', 'notes']
 
+
         
