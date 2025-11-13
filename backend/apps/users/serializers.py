@@ -109,6 +109,12 @@ class LoginSerializer(serializers.Serializer):
                     'User account is disabled.',
                     code='authorization'
                 )
+            
+            if not user.is_email_verified:
+                raise serializers.ValidationError(
+                    'Please verify your email address before logging in. Check your inbox for the verification link.',
+                    code='email_not_verified'
+                )
 
             attrs['user'] = user
             return attrs
@@ -360,6 +366,3 @@ class PAProfileUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = PAProfile
         fields = ['max_hours_per_week', 'notes']
-
-
-        

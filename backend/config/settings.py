@@ -162,7 +162,7 @@ CHANNEL_LAYERS = {
 
 # Email Configuration (Amazon SES)
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend' if not DEBUG else 'django.core.mail.backends.console.EmailBackend'
-EMAIL_HOST = 'email-smtp.us-east-1.amazonaws.com'
+EMAIL_HOST = 'email-smtp.us-east-2.amazonaws.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = os.environ.get('AWS_ACCESS_KEY_ID', '')
