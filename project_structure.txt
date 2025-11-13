@@ -95,6 +95,7 @@
 │   │   ├── __init__.py
 │   │   ├── asgi.py
 │   │   ├── celery.py
+│   │   ├── production_settings.py
 │   │   ├── settings.py
 │   │   ├── urls.py
 │   │   └── wsgi.py
@@ -106,6 +107,10 @@
 │   ├── .env.example
 │   ├── docker-compose.yml
 │   ├── Dockerfile
+│   ├── Dockerfile.prod
+│   ├── Dockerfile.worker
+│   ├── fly.toml
+│   ├── fly.worker.toml
 │   ├── manage.py
 │   ├── project_structure.txt
 │   └── requirements.txt
@@ -176,8 +181,9 @@
 │   ├── README.md
 │   └── tsconfig.json
 ├── .gitignore
+├── netlify.toml
 ├── project_structure.txt
 ├── README.md
 └── test_websocket.py
 
-39 directories, 142 files
+39 directories, 148 files
