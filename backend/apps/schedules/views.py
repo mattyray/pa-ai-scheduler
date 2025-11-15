@@ -283,40 +283,33 @@ class WeekViewAPI(APIView):
     """
     permission_classes = [permissions.IsAuthenticated]
     
-    def get(self, request, year, week):
-        """Get week view data with both approved and pending shifts"""
+    def get(self, request, year, month):
+        """Get month view data with both approved and pending shifts"""
         try:
             year = int(year)
-            week = int(week)
+            month = int(month)
             
-            if not (1 <= week <= 53):
+            if not (1 <= month <= 12):
                 return Response(
-                    {'error': 'Week must be between 1 and 53'},
+                    {'error': 'Month must be between 1 and 12'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            # Calculate Sunday-based week (not ISO week)
-            jan_1 = datetime(year, 1, 1).date()
-            # Find first Sunday of the year
-            days_to_first_sunday = (6 - jan_1.weekday()) % 7
-            first_sunday = jan_1 + timedelta(days=days_to_first_sunday)
-            
-            # Calculate the start of the requested week
-            week_start = first_sunday + timedelta(weeks=week - 1)
-            week_end = week_start + timedelta(days=6)
+            first_day = datetime(year, month, 1).date()
+            last_day = datetime(year, month, monthrange(year, month)[1]).date()
             
             status_filter = request.query_params.get('status')
             
             if status_filter:
                 shifts = ShiftRequest.objects.filter(
-                    date__gte=week_start,
-                    date__lte=week_end,
+                    date__gte=first_day,
+                    date__lte=last_day,
                     status=status_filter.upper()
                 )
             else:
                 shifts = ShiftRequest.objects.filter(
-                    date__gte=week_start,
-                    date__lte=week_end,
+                    date__gte=first_day,
+                    date__lte=last_day,
                     status__in=['APPROVED', 'PENDING']
                 )
             
@@ -333,35 +326,69 @@ class WeekViewAPI(APIView):
                         status=status.HTTP_400_BAD_REQUEST
                     )
             
-            days = []
-            for day_offset in range(7):
-                day_date = week_start + timedelta(days=day_offset)
+            weeks = []
+            current_date = first_day
+            
+            # Go back to Sunday (weekday 6 in Python, where Monday=0)
+            while current_date.weekday() != 6:
+                current_date -= timedelta(days=1)
+            
+            week_number = 1
+            while current_date <= last_day or current_date.month == month:
+                week_start = current_date
+                week_end = current_date + timedelta(days=6)
                 
-                day_shifts = [s for s in shifts if s.date == day_date]
+                days = []
+                for day_offset in range(7):
+                    day_date = week_start + timedelta(days=day_offset)
+                    
+                    day_shifts = [s for s in shifts if s.date == day_date]
+                    
+                    coverage = self._get_day_coverage(day_date)
+                    
+                    total_hours = sum(s.duration_hours for s in day_shifts)
+                    
+                    days.append({
+                        'date': day_date.isoformat(),
+                        'day_name': day_date.strftime('%A'),
+                        'shifts': CalendarShiftSerializer(day_shifts, many=True).data,
+                        'coverage': coverage,
+                        'total_hours': float(total_hours),
+                        'is_current_month': day_date.month == month
+                    })
                 
-                coverage = self._get_day_coverage(day_date)
-                
-                total_hours = sum(s.duration_hours for s in day_shifts)
-                
-                days.append({
-                    'date': day_date.isoformat(),
-                    'day_name': day_date.strftime('%A'),
-                    'shifts': CalendarShiftSerializer(day_shifts, many=True).data,
-                    'coverage': coverage,
-                    'total_hours': float(total_hours)
+                weeks.append({
+                    'week_start': week_start.isoformat(),
+                    'week_end': week_end.isoformat(),
+                    'week_number': week_number,
+                    'days': days
                 })
+                
+                current_date = week_end + timedelta(days=1)
+                week_number += 1
+                
+                if week_number > 6:
+                    break
+            
+            coverage_stats = self._get_month_coverage_stats(first_day, last_day)
             
             response_data = {
-                'week_start': week_start.isoformat(),
-                'week_end': week_end.isoformat(),
-                'week_number': week,
                 'year': year,
-                'days': days,
-                'total_shifts': shifts.count()
+                'month': month,
+                'month_name': first_day.strftime('%B %Y'),
+                'weeks': weeks,
+                'total_shifts': shifts.count(),
+                'coverage_stats': coverage_stats
             }
             
             return Response(response_data)
             
+        except ValueError:
+            return Response(
+                {'error': 'Invalid year or month'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+                
         except ValueError:
             return Response(
                 {'error': 'Invalid year or week'},
