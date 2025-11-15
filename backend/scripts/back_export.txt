@@ -1,7 +1,7 @@
 # TOTETAXI - BACKEND CODE SNAPSHOT
 # AUTO-GENERATED - CODE FILES ONLY
-# Created: 2025-11-09 20:11:26
-# Total files: 88
+# Created: 2025-11-15 14:17:22
+# Total files: 91
 # 🔒 SECURITY: .env files excluded (contain secrets)
 # 📋 INCLUDES: All Django apps, migrations, configuration
 # Apps: accounts (STAFF), bookings, customers, logistics, payments, services
@@ -15,17 +15,13 @@
 # ==== .dockerignore ====
 
 ```
-# Git
 .git
 .gitignore
 
-# Docker
 .docker
 Dockerfile
-Dockerfile.prod
 docker-compose*
 
-# Python
 __pycache__
 *.pyc
 *.pyo
@@ -45,14 +41,12 @@ htmlcov
 .dmypy.json
 dmypy.json
 
-# IDEs
 .vscode
 .idea
 *.swp
 *.swo
 *~
 
-# OS
 .DS_Store
 .DS_Store?
 ._*
@@ -61,30 +55,25 @@ dmypy.json
 ehthumbs.db
 Thumbs.db
 
-# Logs
 logs
 *.log
 npm-debug.log*
 
-# Environment
 .env
 .env.local
 .env.development
 .env.production
 
-# Database
 *.sqlite3
 db.sqlite3
 
-# Media files
 media/
-
-# Static files (will be collected in container)
 staticfiles/
 
-# Node (if any)
 node_modules
 npm-debug.log
+
+README.md
 ```
 
 # ==== Dockerfile ====
@@ -230,6 +219,72 @@ volumes:
   static_volume:
   media_volume:
   redis_data:
+```
+
+# ==== fly.toml ====
+
+```toml
+app = "pa-scheduler"
+primary_region = "ewr"
+
+[build]
+  dockerfile = "Dockerfile.prod"
+
+[deploy]
+  release_command = "python manage.py migrate --noinput"
+
+[env]
+  PORT = "8000"
+  DJANGO_SETTINGS_MODULE = "config.production_settings"
+  PYTHONUNBUFFERED = "1"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [[http_service.checks]]
+    grace_period = "30s"
+    interval = "15s"
+    method = "GET"
+    timeout = "10s"
+    path = "/health/"
+    protocol = "http"
+
+[[vm]]
+  memory = "1gb"
+  cpu_kind = "shared"
+  cpus = 1
+
+[mounts]
+  source = "pa_scheduler_data"
+  destination = "/data"
+```
+
+# ==== fly.worker.toml ====
+
+```toml
+app = "pa-scheduler-worker"
+primary_region = "ewr"
+
+[build]
+  dockerfile = "Dockerfile.worker"
+
+[env]
+  DJANGO_SETTINGS_MODULE = "config.production_settings"
+  PYTHONUNBUFFERED = "1"
+
+[processes]
+  worker = "celery -A config worker -l info --concurrency=2"
+  beat = "celery -A config beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler"
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
 ```
 
 # ==== manage.py ====
@@ -382,6 +437,7 @@ gunicorn==23.0.0
 # Utilities
 python-dotenv==1.0.1
 Pillow==11.0.0
+whitenoise==6.8.2
 ```
 
 # ========================= DJANGO PROJECT SETTINGS (config/) =========================
@@ -456,6 +512,117 @@ app.conf.beat_schedule = {
 @app.task(bind=True)
 def debug_task(self):
     print(f'Request: {self.request!r}')
+```
+
+# ==== config/production_settings.py ====
+
+```python
+from .settings import *
+import dj_database_url
+
+DEBUG = False
+
+ALLOWED_HOSTS = [
+    '.fly.dev',
+    'pa-scheduler.fly.dev',
+    'localhost',
+    '127.0.0.1',
+    '.internal',
+    '172.19.3.162',
+]
+
+if os.environ.get('ALLOWED_HOSTS'):
+    ALLOWED_HOSTS.extend(os.environ.get('ALLOWED_HOSTS').split(','))
+
+MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
+    'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.middleware.common.CommonMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
+    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+]
+
+CSRF_TRUSTED_ORIGINS = [
+    'https://*.fly.dev',
+    'https://pa-scheduler.fly.dev',
+    'https://pa-scheduler.netlify.app',
+]
+
+if os.environ.get('CSRF_TRUSTED_ORIGINS'):
+    CSRF_TRUSTED_ORIGINS.extend(os.environ.get('CSRF_TRUSTED_ORIGINS').split(','))
+
+DATABASES['default'] = dj_database_url.config(
+    default=os.environ.get('DATABASE_URL'),
+    conn_max_age=600,
+    conn_health_checks=True,
+)
+
+REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+
+CELERY_BROKER_URL = REDIS_URL
+CELERY_RESULT_BACKEND = REDIS_URL
+
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            'hosts': [REDIS_URL],
+        },
+    },
+}
+
+STATIC_ROOT = '/app/staticfiles'
+STATIC_URL = '/static/'
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
+MEDIA_ROOT = '/data/media'
+
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+
+SECURE_SSL_REDIRECT = False
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+SECURE_BROWSER_XSS_FILTER = True
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = 'DENY'
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'celery': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}
 ```
 
 # ==== config/settings.py ====
@@ -625,7 +792,7 @@ CHANNEL_LAYERS = {
 
 # Email Configuration (Amazon SES)
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend' if not DEBUG else 'django.core.mail.backends.console.EmailBackend'
-EMAIL_HOST = 'email-smtp.us-east-1.amazonaws.com'
+EMAIL_HOST = 'email-smtp.us-east-2.amazonaws.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = os.environ.get('AWS_ACCESS_KEY_ID', '')
@@ -682,8 +849,13 @@ LOGGING = {
 ```python
 from django.contrib import admin
 from django.urls import path, include
+from django.http import JsonResponse
+
+def health_check(request):
+    return JsonResponse({'status': 'healthy'})
 
 urlpatterns = [
+    path('health/', health_check),
     path('admin/', admin.site.urls),
     path('api/auth/', include('apps.users.urls')),
     path('api/schedule-periods/', include('apps.schedules.urls')),
@@ -2107,6 +2279,24 @@ class SchedulePeriodSerializer(serializers.ModelSerializer):
         """Count total shifts in this period"""
         return obj.shiftrequest_set.count()
     
+    def validate_start_date(self, value):
+        """Ensure start_date is parsed as a date object without timezone conversion"""
+        if isinstance(value, str):
+            try:
+                return datetime.strptime(value, '%Y-%m-%d').date()
+            except ValueError:
+                raise serializers.ValidationError('Invalid date format. Use YYYY-MM-DD.')
+        return value
+    
+    def validate_end_date(self, value):
+        """Ensure end_date is parsed as a date object without timezone conversion"""
+        if isinstance(value, str):
+            try:
+                return datetime.strptime(value, '%Y-%m-%d').date()
+            except ValueError:
+                raise serializers.ValidationError('Invalid date format. Use YYYY-MM-DD.')
+        return value
+    
     def validate(self, data):
         """Validate that end_date is after start_date"""
         if data.get('end_date') and data.get('start_date'):
@@ -2148,6 +2338,24 @@ class SchedulePeriodCreateUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = SchedulePeriod
         fields = ['name', 'start_date', 'end_date', 'status']
+    
+    def validate_start_date(self, value):
+        """Ensure start_date is parsed as a date object without timezone conversion"""
+        if isinstance(value, str):
+            try:
+                return datetime.strptime(value, '%Y-%m-%d').date()
+            except ValueError:
+                raise serializers.ValidationError('Invalid date format. Use YYYY-MM-DD.')
+        return value
+    
+    def validate_end_date(self, value):
+        """Ensure end_date is parsed as a date object without timezone conversion"""
+        if isinstance(value, str):
+            try:
+                return datetime.strptime(value, '%Y-%m-%d').date()
+            except ValueError:
+                raise serializers.ValidationError('Invalid date format. Use YYYY-MM-DD.')
+        return value
     
     def validate(self, data):
         """Validate dates"""
@@ -2608,6 +2816,7 @@ class MonthViewAPI(APIView):
     """
     GET /api/calendar/month/{year}/{month}/
     Returns approved AND pending shifts for a given month in calendar format
+    Weeks start on Sunday
     
     Query params:
     - pa_id: Filter by specific PA
@@ -2647,7 +2856,6 @@ class MonthViewAPI(APIView):
             
             shifts = shifts.select_related('requested_by', 'schedule_period').order_by('date', 'start_time')
             
-            # FIXED: Convert pa_id to integer
             pa_id = request.query_params.get('pa_id')
             if pa_id:
                 try:
@@ -2662,7 +2870,8 @@ class MonthViewAPI(APIView):
             weeks = []
             current_date = first_day
             
-            while current_date.weekday() != 0:
+            # Go back to Sunday (weekday 6 in Python, where Monday=0)
+            while current_date.weekday() != 6:
                 current_date -= timedelta(days=1)
             
             week_number = 1
@@ -2681,17 +2890,17 @@ class MonthViewAPI(APIView):
                     total_hours = sum(s.duration_hours for s in day_shifts)
                     
                     days.append({
-                        'date': day_date,
+                        'date': day_date.isoformat(),
                         'day_name': day_date.strftime('%A'),
                         'shifts': CalendarShiftSerializer(day_shifts, many=True).data,
                         'coverage': coverage,
-                        'total_hours': total_hours,
+                        'total_hours': float(total_hours),
                         'is_current_month': day_date.month == month
                     })
                 
                 weeks.append({
-                    'week_start': week_start,
-                    'week_end': week_end,
+                    'week_start': week_start.isoformat(),
+                    'week_end': week_end.isoformat(),
                     'week_number': week_number,
                     'days': days
                 })
@@ -2725,10 +2934,19 @@ class MonthViewAPI(APIView):
         """Get coverage status for a specific day"""
         try:
             coverage = CriticalTimeCoverage.objects.get(date=date)
+            
+            # Calculate status based on coverage
+            if coverage.morning_covered and coverage.evening_covered:
+                coverage_status = 'full'
+            elif coverage.morning_covered or coverage.evening_covered:
+                coverage_status = 'partial'
+            else:
+                coverage_status = 'none'
+            
             return {
                 'morning_covered': coverage.morning_covered,
                 'evening_covered': coverage.evening_covered,
-                'status': coverage.coverage_status
+                'status': coverage_status
             }
         except CriticalTimeCoverage.DoesNotExist:
             return {
@@ -2741,35 +2959,25 @@ class MonthViewAPI(APIView):
         """Calculate coverage statistics for the month"""
         total_days = (end_date - start_date).days + 1
         
-        coverage_records = CriticalTimeCoverage.objects.filter(
+        # Count days where either morning OR evening is covered
+        covered_days = CriticalTimeCoverage.objects.filter(
             date__gte=start_date,
             date__lte=end_date
-        )
-        
-        fully_covered = coverage_records.filter(
-            morning_covered=True,
-            evening_covered=True
+        ).filter(
+            Q(morning_covered=True) | Q(evening_covered=True)
         ).count()
-        
-        partially_covered = coverage_records.filter(
-            Q(morning_covered=True, evening_covered=False) |
-            Q(morning_covered=False, evening_covered=True)
-        ).count()
-        
-        not_covered = total_days - fully_covered - partially_covered
         
         return {
             'total_days': total_days,
-            'fully_covered': fully_covered,
-            'partially_covered': partially_covered,
-            'not_covered': not_covered,
-            'coverage_percentage': round((fully_covered / total_days * 100), 1) if total_days > 0 else 0
+            'covered_days': covered_days,
+            'coverage_percentage': (covered_days / total_days * 100) if total_days > 0 else 0
         }
+
 
 class WeekViewAPI(APIView):
     """
     GET /api/calendar/week/{year}/{week}/
-    Returns approved AND pending shifts for a given week (ISO week number)
+    Returns approved AND pending shifts for a given week (Sunday-based week number)
     
     Query params:
     - pa_id: Filter by specific PA
@@ -2789,9 +2997,12 @@ class WeekViewAPI(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            jan_4 = datetime(year, 1, 4).date()
-            week_1_monday = jan_4 - timedelta(days=jan_4.weekday())
-            week_start = week_1_monday + timedelta(weeks=week - 1)
+            # Calculate Sunday-based week
+            jan_1 = datetime(year, 1, 1).date()
+            days_since_sunday = (jan_1.weekday() + 1) % 7
+            first_week_start = jan_1 - timedelta(days=days_since_sunday)
+            
+            week_start = first_week_start + timedelta(weeks=week - 1)
             week_end = week_start + timedelta(days=6)
             
             status_filter = request.query_params.get('status')
@@ -2861,10 +3072,19 @@ class WeekViewAPI(APIView):
         """Get coverage status for a specific day"""
         try:
             coverage = CriticalTimeCoverage.objects.get(date=date)
+            
+            # Calculate status based on coverage
+            if coverage.morning_covered and coverage.evening_covered:
+                coverage_status = 'full'
+            elif coverage.morning_covered or coverage.evening_covered:
+                coverage_status = 'partial'
+            else:
+                coverage_status = 'none'
+            
             return {
                 'morning_covered': coverage.morning_covered,
                 'evening_covered': coverage.evening_covered,
-                'status': coverage.coverage_status
+                'status': coverage_status
             }
         except CriticalTimeCoverage.DoesNotExist:
             return {
@@ -2906,7 +3126,6 @@ class DayViewAPI(APIView):
             
             shifts = shifts.select_related('requested_by', 'schedule_period').order_by('start_time')
             
-            # FIXED: Convert pa_id to integer
             pa_id = request.query_params.get('pa_id')
             if pa_id:
                 try:
@@ -2920,12 +3139,21 @@ class DayViewAPI(APIView):
             
             try:
                 coverage = CriticalTimeCoverage.objects.get(date=day_date)
+                
+                # Calculate status
+                if coverage.morning_covered and coverage.evening_covered:
+                    coverage_status = 'full'
+                elif coverage.morning_covered or coverage.evening_covered:
+                    coverage_status = 'partial'
+                else:
+                    coverage_status = 'none'
+                
                 coverage_data = {
                     'morning_covered': coverage.morning_covered,
                     'evening_covered': coverage.evening_covered,
                     'morning_shift': CalendarShiftSerializer(coverage.morning_shift).data if coverage.morning_shift else None,
                     'evening_shift': CalendarShiftSerializer(coverage.evening_shift).data if coverage.evening_shift else None,
-                    'status': coverage.coverage_status
+                    'status': coverage_status
                 }
             except CriticalTimeCoverage.DoesNotExist:
                 coverage_data = {
@@ -4841,9 +5069,8 @@ class User(AbstractUser):
     
     is_email_verified = models.BooleanField(default=False)
     
-    # Make email the login field instead of username
     USERNAME_FIELD = 'email'
-    REQUIRED_FIELDS = ['username', 'first_name', 'last_name']
+    REQUIRED_FIELDS = ['first_name', 'last_name']
     
     class Meta:
         db_table = 'users'
@@ -4854,9 +5081,10 @@ class User(AbstractUser):
         return f"{self.email} ({self.get_role_display()})"
     
     def save(self, *args, **kwargs):
-        # Normalize email to lowercase
         if self.email:
             self.email = self.email.lower()
+        if not self.username:
+            self.username = self.email.split('@')[0]
         super().save(*args, **kwargs)
 
 
@@ -4922,7 +5150,6 @@ class PAProfile(models.Model):
         limit_choices_to={'role': 'PA'}
     )
     
-    # Preferred working hours
     preferred_start_time = models.TimeField(
         null=True,
         blank=True,
@@ -4934,20 +5161,17 @@ class PAProfile(models.Model):
         help_text="Preferred shift end time (e.g., 16:00)"
     )
     
-    # Preferred working days (stored as JSON array)
     preferred_days = models.JSONField(
         default=list,
         blank=True,
         help_text='List of preferred days: ["monday", "tuesday", ...]'
     )
     
-    # Weekly hour limit
     max_hours_per_week = models.IntegerField(
         default=40,
         help_text="Maximum hours this PA can work per week"
     )
     
-    # Admin notes about this PA
     notes = models.TextField(
         blank=True,
         help_text="Internal notes about this PA (admin only)"
@@ -4977,12 +5201,10 @@ class PAScheduleStats(models.Model):
         limit_choices_to={'role': 'PA'}
     )
     
-    # Lifetime statistics
     total_shifts_worked = models.IntegerField(default=0)
     total_hours_worked = models.DecimalField(max_digits=8, decimal_places=2, default=0)
     average_hours_per_week = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     
-    # Pattern data (stored as JSON)
     most_common_days = models.JSONField(
         default=dict,
         blank=True,
@@ -4997,7 +5219,6 @@ class PAScheduleStats(models.Model):
         help_text="Average shift duration in hours"
     )
     
-    # Behavioral patterns
     preferred_shift_pattern = models.CharField(
         max_length=20,
         blank=True,
@@ -5009,7 +5230,6 @@ class PAScheduleStats(models.Model):
         ]
     )
     
-    # Reliability metrics
     reliability_score = models.DecimalField(
         max_digits=5,
         decimal_places=2,
@@ -5017,7 +5237,6 @@ class PAScheduleStats(models.Model):
         help_text="Percentage of completed shifts without cancellation (0-100)"
     )
     
-    # Request timing
     typical_request_timing = models.IntegerField(
         null=True,
         blank=True,
@@ -5029,7 +5248,6 @@ class PAScheduleStats(models.Model):
         help_text="Average number of consecutive days worked"
     )
     
-    # Last activity
     last_worked_date = models.DateField(null=True, blank=True)
     last_calculated = models.DateTimeField(auto_now=True)
     
@@ -5048,7 +5266,7 @@ class PAScheduleStats(models.Model):
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
-from .models import User, PAProfile, PAScheduleStats  # <-- ADD PAProfile and PAScheduleStats here
+from .models import User, PAProfile, PAScheduleStats
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -5076,7 +5294,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['email', 'username', 'password', 'password_confirm', 
+        fields = ['email', 'password', 'password_confirm', 
                   'first_name', 'last_name', 'phone_number']
 
     def validate_email(self, value):
@@ -5097,14 +5315,26 @@ class RegisterSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         """Create new user with hashed password"""
         validated_data.pop('password_confirm')
+        
+        # Auto-generate username from email
+        email = validated_data['email']
+        username = email.split('@')[0]
+        
+        # Ensure username is unique
+        base_username = username
+        counter = 1
+        while User.objects.filter(username=username).exists():
+            username = f"{base_username}{counter}"
+            counter += 1
+        
         user = User.objects.create_user(
             email=validated_data['email'],
-            username=validated_data['username'],
+            username=username,
             password=validated_data['password'],
             first_name=validated_data.get('first_name', ''),
             last_name=validated_data.get('last_name', ''),
             phone_number=validated_data['phone_number'],
-            role='PA'  # Default role is PA
+            role='PA'
         )
         return user
 
@@ -5127,10 +5357,9 @@ class LoginSerializer(serializers.Serializer):
         password = attrs.get('password')
 
         if email and password:
-            # Try to authenticate
             user = authenticate(
                 request=self.context.get('request'),
-                username=email,  # We use email as username
+                username=email,
                 password=password
             )
 
@@ -5144,6 +5373,12 @@ class LoginSerializer(serializers.Serializer):
                 raise serializers.ValidationError(
                     'User account is disabled.',
                     code='authorization'
+                )
+            
+            if not user.is_email_verified:
+                raise serializers.ValidationError(
+                    'Please verify your email address before logging in. Check your inbox for the verification link.',
+                    code='email_not_verified'
                 )
 
             attrs['user'] = user
@@ -5204,8 +5439,7 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
         if not value:
             raise serializers.ValidationError("Phone number is required.")
         return value
-    
-# ============= PA MANAGEMENT SERIALIZERS =============
+
 
 class PAProfileSerializer(serializers.ModelSerializer):
     """Serializer for PA profile data"""
