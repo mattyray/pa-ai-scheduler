@@ -44,13 +44,26 @@ export function calculateDuration(startTime: string, endTime: string): number {
   return totalMinutes / 60;
 }
 
-export function getISOWeek(date: Date): { year: number; week: number } {
+export function getSundayBasedWeek(date: Date): { year: number; week: number } {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() + 4 - (d.getDay() || 7));
-  const yearStart = new Date(d.getFullYear(), 0, 1);
-  const weekNo = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
-  return { year: d.getFullYear(), week: weekNo };
+  
+  const year = d.getFullYear();
+  const jan1 = new Date(year, 0, 1);
+  
+  const daysSinceSunday = (jan1.getDay() + 0) % 7;
+  const firstWeekStart = new Date(jan1);
+  firstWeekStart.setDate(jan1.getDate() - daysSinceSunday);
+  
+  const diffTime = d.getTime() - firstWeekStart.getTime();
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  const weekNo = Math.floor(diffDays / 7) + 1;
+  
+  return { year, week: weekNo };
+}
+
+export function getISOWeek(date: Date): { year: number; week: number } {
+  return getSundayBasedWeek(date);
 }
 
 export function isToday(dateStr: string): boolean {
