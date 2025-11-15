@@ -23,6 +23,24 @@ class SchedulePeriodSerializer(serializers.ModelSerializer):
         """Count total shifts in this period"""
         return obj.shiftrequest_set.count()
     
+    def validate_start_date(self, value):
+        """Ensure start_date is parsed as a date object without timezone conversion"""
+        if isinstance(value, str):
+            try:
+                return datetime.strptime(value, '%Y-%m-%d').date()
+            except ValueError:
+                raise serializers.ValidationError('Invalid date format. Use YYYY-MM-DD.')
+        return value
+    
+    def validate_end_date(self, value):
+        """Ensure end_date is parsed as a date object without timezone conversion"""
+        if isinstance(value, str):
+            try:
+                return datetime.strptime(value, '%Y-%m-%d').date()
+            except ValueError:
+                raise serializers.ValidationError('Invalid date format. Use YYYY-MM-DD.')
+        return value
+    
     def validate(self, data):
         """Validate that end_date is after start_date"""
         if data.get('end_date') and data.get('start_date'):
@@ -64,6 +82,24 @@ class SchedulePeriodCreateUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = SchedulePeriod
         fields = ['name', 'start_date', 'end_date', 'status']
+    
+    def validate_start_date(self, value):
+        """Ensure start_date is parsed as a date object without timezone conversion"""
+        if isinstance(value, str):
+            try:
+                return datetime.strptime(value, '%Y-%m-%d').date()
+            except ValueError:
+                raise serializers.ValidationError('Invalid date format. Use YYYY-MM-DD.')
+        return value
+    
+    def validate_end_date(self, value):
+        """Ensure end_date is parsed as a date object without timezone conversion"""
+        if isinstance(value, str):
+            try:
+                return datetime.strptime(value, '%Y-%m-%d').date()
+            except ValueError:
+                raise serializers.ValidationError('Invalid date format. Use YYYY-MM-DD.')
+        return value
     
     def validate(self, data):
         """Validate dates"""
