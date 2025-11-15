@@ -56,12 +56,29 @@ export default function SuggestShiftModal({
     }
   }, [defaultDate]);
 
+  useEffect(() => {
+    if (formData.date && periods.length > 0) {
+      const selectedDate = new Date(formData.date + 'T12:00:00');
+      const matchingPeriod = periods.find(period => {
+        const startDate = new Date(period.start_date + 'T12:00:00');
+        const endDate = new Date(period.end_date + 'T12:00:00');
+        return selectedDate >= startDate && selectedDate <= endDate;
+      });
+      
+      if (matchingPeriod && formData.schedule_period !== matchingPeriod.id.toString()) {
+        setFormData(prev => ({ 
+          ...prev, 
+          schedule_period: matchingPeriod.id.toString() 
+        }));
+      }
+    }
+  }, [formData.date, periods]);
+
   const loadPAs = async () => {
     try {
       const response = await api.get('/api/auth/users/');
       console.log('PA API Response:', response.data);
       
-      // Handle both array and paginated response
       let allUsers = [];
       if (Array.isArray(response.data)) {
         allUsers = response.data;
@@ -82,7 +99,6 @@ export default function SuggestShiftModal({
       const response = await schedulesAPI.listPeriods();
       console.log('Periods API Response:', response.data);
       
-      // Handle paginated response from DRF
       let periodsData: SchedulePeriod[] = [];
       
       if (response.data.results && Array.isArray(response.data.results)) {
@@ -91,12 +107,10 @@ export default function SuggestShiftModal({
         periodsData = response.data;
       }
       
-      // Filter for OPEN periods only (as per your requirement)
       const filteredPeriods = periodsData.filter((p) => p.status === 'OPEN');
       
       setPeriods(filteredPeriods);
       
-      // Auto-select first open period
       if (filteredPeriods.length > 0 && !formData.schedule_period) {
         setFormData(prev => ({
           ...prev,
@@ -165,13 +179,11 @@ export default function SuggestShiftModal({
   return (
     <div className="fixed inset-0 z-[9999] overflow-y-auto">
       <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-        {/* Backdrop */}
         <div 
           className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity z-[9998]" 
           onClick={onClose} 
         />
 
-        {/* Modal Content */}
         <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full relative z-[9999]">
           <form onSubmit={handleSubmit}>
             <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
@@ -208,7 +220,20 @@ export default function SuggestShiftModal({
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Period *
+                    Date *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={formData.date}
+                    onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                    className="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 bg-white focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Period * <span className="text-xs text-gray-500">(Auto-selected based on date)</span>
                   </label>
                   <select
                     required
@@ -226,19 +251,6 @@ export default function SuggestShiftModal({
                   {periods.length === 0 && (
                     <p className="mt-1 text-sm text-gray-500">Loading periods...</p>
                   )}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Date *
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={formData.date}
-                    onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                    className="w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-gray-900 bg-white focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
