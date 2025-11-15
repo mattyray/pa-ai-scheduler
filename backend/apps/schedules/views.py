@@ -200,17 +200,18 @@ class MonthViewAPI(APIView):
                     total_hours = sum(s.duration_hours for s in day_shifts)
                     
                     days.append({
-                        'date': day_date,
+                        'date': day_date.isoformat(),  # ADD .isoformat()
                         'day_name': day_date.strftime('%A'),
                         'shifts': CalendarShiftSerializer(day_shifts, many=True).data,
                         'coverage': coverage,
-                        'total_hours': total_hours,
+                        'total_hours': float(total_hours),  # ADD float()
                         'is_current_month': day_date.month == month
                     })
+
                 
                 weeks.append({
-                    'week_start': week_start,
-                    'week_end': week_end,
+                    'week_start': week_start.isoformat(),  # ADD .isoformat()
+                    'week_end': week_end.isoformat(),      # ADD .isoformat()
                     'week_number': week_number,
                     'days': days
                 })
