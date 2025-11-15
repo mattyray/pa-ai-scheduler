@@ -122,6 +122,8 @@ class SchedulePeriodViewSet(viewsets.ModelViewSet):
             response_data['coverage_status'] = 'All critical times covered! ✅'
         
         return Response(response_data, status=status.HTTP_200_OK)
+
+
 class MonthViewAPI(APIView):
     """
     GET /api/calendar/month/{year}/{month}/
@@ -200,18 +202,17 @@ class MonthViewAPI(APIView):
                     total_hours = sum(s.duration_hours for s in day_shifts)
                     
                     days.append({
-                        'date': day_date.isoformat(),  # ADD .isoformat()
+                        'date': day_date.isoformat(),
                         'day_name': day_date.strftime('%A'),
                         'shifts': CalendarShiftSerializer(day_shifts, many=True).data,
                         'coverage': coverage,
-                        'total_hours': float(total_hours),  # ADD float()
+                        'total_hours': float(total_hours),
                         'is_current_month': day_date.month == month
                     })
-
                 
                 weeks.append({
-                    'week_start': week_start.isoformat(),  # ADD .isoformat()
-                    'week_end': week_end.isoformat(),      # ADD .isoformat()
+                    'week_start': week_start.isoformat(),
+                    'week_end': week_end.isoformat(),
                     'week_number': week_number,
                     'days': days
                 })
@@ -245,10 +246,19 @@ class MonthViewAPI(APIView):
         """Get coverage status for a specific day"""
         try:
             coverage = CriticalTimeCoverage.objects.get(date=date)
+            
+            # Calculate status based on coverage
+            if coverage.morning_covered and coverage.evening_covered:
+                coverage_status = 'full'
+            elif coverage.morning_covered or coverage.evening_covered:
+                coverage_status = 'partial'
+            else:
+                coverage_status = 'none'
+            
             return {
                 'morning_covered': coverage.morning_covered,
                 'evening_covered': coverage.evening_covered,
-                'status': coverage.coverage_status
+                'status': coverage_status
             }
         except CriticalTimeCoverage.DoesNotExist:
             return {
@@ -260,10 +270,13 @@ class MonthViewAPI(APIView):
     def _get_month_coverage_stats(self, start_date, end_date):
         """Calculate coverage statistics for the month"""
         total_days = (end_date - start_date).days + 1
+        
+        # Count days where either morning OR evening is covered
         covered_days = CriticalTimeCoverage.objects.filter(
             date__gte=start_date,
-            date__lte=end_date,
-            coverage_status__in=['full', 'partial']
+            date__lte=end_date
+        ).filter(
+            Q(morning_covered=True) | Q(evening_covered=True)
         ).count()
         
         return {
@@ -271,6 +284,7 @@ class MonthViewAPI(APIView):
             'covered_days': covered_days,
             'coverage_percentage': (covered_days / total_days * 100) if total_days > 0 else 0
         }
+
 
 class WeekViewAPI(APIView):
     """
@@ -370,10 +384,19 @@ class WeekViewAPI(APIView):
         """Get coverage status for a specific day"""
         try:
             coverage = CriticalTimeCoverage.objects.get(date=date)
+            
+            # Calculate status based on coverage
+            if coverage.morning_covered and coverage.evening_covered:
+                coverage_status = 'full'
+            elif coverage.morning_covered or coverage.evening_covered:
+                coverage_status = 'partial'
+            else:
+                coverage_status = 'none'
+            
             return {
                 'morning_covered': coverage.morning_covered,
                 'evening_covered': coverage.evening_covered,
-                'status': coverage.coverage_status
+                'status': coverage_status
             }
         except CriticalTimeCoverage.DoesNotExist:
             return {
@@ -381,6 +404,8 @@ class WeekViewAPI(APIView):
                 'evening_covered': False,
                 'status': 'none'
             }
+
+
 class DayViewAPI(APIView):
     """
     GET /api/calendar/day/{date}/
@@ -413,7 +438,6 @@ class DayViewAPI(APIView):
             
             shifts = shifts.select_related('requested_by', 'schedule_period').order_by('start_time')
             
-            # FIXED: Convert pa_id to integer
             pa_id = request.query_params.get('pa_id')
             if pa_id:
                 try:
@@ -427,12 +451,21 @@ class DayViewAPI(APIView):
             
             try:
                 coverage = CriticalTimeCoverage.objects.get(date=day_date)
+                
+                # Calculate status
+                if coverage.morning_covered and coverage.evening_covered:
+                    coverage_status = 'full'
+                elif coverage.morning_covered or coverage.evening_covered:
+                    coverage_status = 'partial'
+                else:
+                    coverage_status = 'none'
+                
                 coverage_data = {
                     'morning_covered': coverage.morning_covered,
                     'evening_covered': coverage.evening_covered,
                     'morning_shift': CalendarShiftSerializer(coverage.morning_shift).data if coverage.morning_shift else None,
                     'evening_shift': CalendarShiftSerializer(coverage.evening_shift).data if coverage.evening_shift else None,
-                    'status': coverage.coverage_status
+                    'status': coverage_status
                 }
             except CriticalTimeCoverage.DoesNotExist:
                 coverage_data = {
