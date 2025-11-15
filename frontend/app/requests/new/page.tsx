@@ -42,6 +42,24 @@ export default function NewShiftRequestPage() {
     }
   }, [user]);
 
+  useEffect(() => {
+    if (formData.date && periods.length > 0) {
+      const selectedDate = new Date(formData.date + 'T12:00:00');
+      const matchingPeriod = periods.find(period => {
+        const startDate = new Date(period.start_date + 'T12:00:00');
+        const endDate = new Date(period.end_date + 'T12:00:00');
+        return selectedDate >= startDate && selectedDate <= endDate;
+      });
+      
+      if (matchingPeriod && formData.schedule_period !== matchingPeriod.id.toString()) {
+        setFormData(prev => ({ 
+          ...prev, 
+          schedule_period: matchingPeriod.id.toString() 
+        }));
+      }
+    }
+  }, [formData.date, periods]);
+
   const loadPeriods = async () => {
     try {
       const response = await schedulesAPI.listPeriods();
@@ -237,8 +255,29 @@ export default function NewShiftRequestPage() {
               ) : (
                 <>
                   <div>
+                    <label htmlFor="date" className="block text-sm font-semibold text-gray-700 mb-2">
+                      Shift Date * <span className="text-xs font-normal text-gray-500">(Select date first - period will auto-select)</span>
+                    </label>
+                    <div 
+                      onClick={() => dateRef.current?.showPicker()}
+                      className="relative cursor-pointer"
+                    >
+                      <input
+                        ref={dateRef}
+                        type="date"
+                        id="date"
+                        required
+                        value={formData.date}
+                        onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                        className="block w-full border-2 border-gray-300 rounded-lg shadow-sm py-4 px-4 text-gray-900 font-bold text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all"
+                        style={{ colorScheme: 'light' }}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
                     <label htmlFor="schedule_period" className="block text-sm font-semibold text-gray-700 mb-2">
-                      Schedule Period *
+                      Schedule Period * <span className="text-xs font-normal text-gray-500">(Auto-selected based on date)</span>
                     </label>
                     <select
                       id="schedule_period"
@@ -253,29 +292,6 @@ export default function NewShiftRequestPage() {
                         </option>
                       ))}
                     </select>
-                  </div>
-
-                  <div>
-                    <label htmlFor="date" className="block text-sm font-semibold text-gray-700 mb-2">
-                      Shift Date * <span className="text-xs font-normal text-gray-500">(Click anywhere to select date)</span>
-                    </label>
-                    <div 
-                      onClick={() => dateRef.current?.showPicker()}
-                      className="relative cursor-pointer"
-                    >
-                      <input
-                        ref={dateRef}
-                        type="date"
-                        id="date"
-                        required
-                        value={formData.date}
-                        onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                        min={periods.find(p => p.id.toString() === formData.schedule_period)?.start_date}
-                        max={periods.find(p => p.id.toString() === formData.schedule_period)?.end_date}
-                        className="block w-full border-2 border-gray-300 rounded-lg shadow-sm py-4 px-4 text-gray-900 font-bold text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all"
-                        style={{ colorScheme: 'light' }}
-                      />
-                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
