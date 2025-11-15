@@ -122,12 +122,11 @@ class SchedulePeriodViewSet(viewsets.ModelViewSet):
             response_data['coverage_status'] = 'All critical times covered! ✅'
         
         return Response(response_data, status=status.HTTP_200_OK)
-
-
 class MonthViewAPI(APIView):
     """
     GET /api/calendar/month/{year}/{month}/
     Returns approved AND pending shifts for a given month in calendar format
+    Weeks start on Sunday
     
     Query params:
     - pa_id: Filter by specific PA
@@ -167,7 +166,6 @@ class MonthViewAPI(APIView):
             
             shifts = shifts.select_related('requested_by', 'schedule_period').order_by('date', 'start_time')
             
-            # FIXED: Convert pa_id to integer
             pa_id = request.query_params.get('pa_id')
             if pa_id:
                 try:
@@ -182,7 +180,8 @@ class MonthViewAPI(APIView):
             weeks = []
             current_date = first_day
             
-            while current_date.weekday() != 0:
+            # Go back to Sunday (weekday 6 in Python, where Monday=0)
+            while current_date.weekday() != 6:
                 current_date -= timedelta(days=1)
             
             week_number = 1
@@ -260,36 +259,23 @@ class MonthViewAPI(APIView):
     def _get_month_coverage_stats(self, start_date, end_date):
         """Calculate coverage statistics for the month"""
         total_days = (end_date - start_date).days + 1
-        
-        coverage_records = CriticalTimeCoverage.objects.filter(
+        covered_days = CriticalTimeCoverage.objects.filter(
             date__gte=start_date,
-            date__lte=end_date
-        )
-        
-        fully_covered = coverage_records.filter(
-            morning_covered=True,
-            evening_covered=True
+            date__lte=end_date,
+            coverage_status__in=['full', 'partial']
         ).count()
-        
-        partially_covered = coverage_records.filter(
-            Q(morning_covered=True, evening_covered=False) |
-            Q(morning_covered=False, evening_covered=True)
-        ).count()
-        
-        not_covered = total_days - fully_covered - partially_covered
         
         return {
             'total_days': total_days,
-            'fully_covered': fully_covered,
-            'partially_covered': partially_covered,
-            'not_covered': not_covered,
-            'coverage_percentage': round((fully_covered / total_days * 100), 1) if total_days > 0 else 0
+            'covered_days': covered_days,
+            'coverage_percentage': (covered_days / total_days * 100) if total_days > 0 else 0
         }
+
 
 class WeekViewAPI(APIView):
     """
     GET /api/calendar/week/{year}/{week}/
-    Returns approved AND pending shifts for a given week (ISO week number)
+    Returns approved AND pending shifts for a given week (Sunday-based week number)
     
     Query params:
     - pa_id: Filter by specific PA
@@ -309,9 +295,14 @@ class WeekViewAPI(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            jan_4 = datetime(year, 1, 4).date()
-            week_1_monday = jan_4 - timedelta(days=jan_4.weekday())
-            week_start = week_1_monday + timedelta(weeks=week - 1)
+            # Calculate Sunday-based week (not ISO week)
+            jan_1 = datetime(year, 1, 1).date()
+            # Find first Sunday of the year
+            days_to_first_sunday = (6 - jan_1.weekday()) % 7
+            first_sunday = jan_1 + timedelta(days=days_to_first_sunday)
+            
+            # Calculate the start of the requested week
+            week_start = first_sunday + timedelta(weeks=week - 1)
             week_end = week_start + timedelta(days=6)
             
             status_filter = request.query_params.get('status')
