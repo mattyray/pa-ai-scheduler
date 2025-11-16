@@ -60,11 +60,13 @@ export default function PADashboard() {
       
       console.log('Suggestions API Response:', suggestionsRes.data);
       
-      let allSuggestions = [];
-      if (Array.isArray(suggestionsRes.data)) {
-        allSuggestions = suggestionsRes.data;
-      } else if (suggestionsRes.data.results && Array.isArray(suggestionsRes.data.results)) {
-        allSuggestions = suggestionsRes.data.results;
+      let allSuggestions: ShiftSuggestion[] = [];
+      const responseData = suggestionsRes.data as any;
+      
+      if (Array.isArray(responseData)) {
+        allSuggestions = responseData;
+      } else if (responseData?.results && Array.isArray(responseData.results)) {
+        allSuggestions = responseData.results;
       }
       
       console.log('All suggestions:', allSuggestions);
