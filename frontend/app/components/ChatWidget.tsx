@@ -7,7 +7,7 @@ import { fetchMessages, ChatWebSocket } from '@/lib/chat-api';
 import ChatMessage from './ChatMessage';
 
 export default function ChatWidget() {
-  const { user, accessToken } = useAuth();
+  const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessageType[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -24,14 +24,21 @@ export default function ChatWidget() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const shouldScrollRef = useRef(true);
 
+  const getAccessToken = () => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('access_token');
+    }
+    return null;
+  };
+
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      audioRef.current = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBTGH0fPTgjMGHm7A7+OZUA0PVqzn77BdGAg+ldnyz3otBSl+zPLaizsIGGS57OihUhELTKXh8bllHAU2jtT0yoA0Bx1rvu7km1EODFCM5O+zZhwGN5DU88yANQcdbsDu5JtRDgxPiuPvs2YcBjeP0/TLgDYHHm7A7eSbUQ4MT4zk77NmHAY3j9P0y4A2Bx5uwO7km1EODE+L5O+zZhwGN4/S9MuANgcdbsDu5JtRDgxPjOTvs2YcBjeP0/TLgDYHHW7A7uSbUQ4LT4zk77NmHAY3j9P0y4A2Bx1uwO7km1EODFCM5O+zZhwGOJDT9MuANgcdbsDu5JtRDgxPjOTvs2YcBjiQ0/TLgDYHHm7A7uObUQ4MT4vk7rNmHAY4kNP0y4A2Bx5uwO7jm1EOC0+M5O+zZhwGOJDT9MuANgcebsDu45tRDgtPjOTvs2YcBjiQ0/TLgDYHHm7A7uObUQ4LT4zk77NmHAY4kNP0y4A2Bx5uwO7jm1EOC0+M5O+zZhwGOJDT9MuANgcebsDu45tRDgtPjOTvs2YcBjiQ0/TLgDYHHm7A7uObUQ4LT4zk77NmHAY4kNP0y4A2Bx5uwO7jm1EOC0+M5O+zZhwGOJDT9MuANgcebsDu45tRDgtPjOTvs2YcBjiQ0/TLgDYHHm7A7uObUQ4LT4zk77NmHAY4kNP0y4A2Bx5uwO7jm1EOC0+M5O+zZhwGOJDT9MuANgcebsDu45tRDgtPjOTvs2YcBjiQ0/TLgDYHHm7A7uObUQ4LT4zk77NmHAY4kNP0y4A2Bx5uwO7jm1EOC0+M5O+zZhwGOJDT9MuANgcebsDu45tRDgtPjOTvs2YcBjiQ0/TLgDYHHm7A7uObUQ4LT4zk77NmHAY4kNP0y4A2Bx5uwO7jm1EOC0+M5O+zZhwGOJDT9MuANgcebsDu45tRDgtPjOTvs2YcBjiQ0/TLgDYHHm7A7uObUQ4LT4zk77NmHAY4kNP0y4A2Bx5uwO7jm1EOC0+M5O+zZhwGOJDT9MuANgcebsDu45tRDgtPjOTvs2YcBjiQ0/TLgDYHHm7A7uObUQ4LT4zk77NmHAY4kNP0y4A2Bx5uwO7jm1EOC0+M5O+zZhwGOJDT9MuANgcebsDu45tRDgtPjOTvs2YcBjiQ0/TLgDYHHm7A7uObUQ4LT4zk77NmHAY4kNP0y4A2Bx5uwO7jm1EOC0+M5O+zZhwGOJDT9MuANgcebsDu45tRDgtPjOTvs2YcBjiQ0/TLgDYHHm7A7uObUQ4LT4zk77NmHAY=');
+      audioRef.current = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBTGH0fPTgjMGHm7A7+OZUA0PVqzn77BdGAg+ldnyz3otBSl+zPLaizsIGGS57OihUhELTKXh8bllHAU2jtT0yoA0Bx1rvu7km1EODFCM5O+zZhwGN5DU88yANQcdbsDu5JtRDgxPiuPvs2YcBjeP0/TLgDYHHm7A7eSbUQ4MT4zk77NmHAY3j9P0y4A2Bx5uwO7km1EODE+L5O+zZhwGN4/S9MuANgcdbsDu5JtRDgxPjOTvs2YcBjeP0/TLgDYHHW7A7uSbUQ4LT4zk77NmHAY3j9P0y4A2Bx1uwO7km1EODFCM5O+zZhwGOJDT9MuANgcdbsDu5JtRDgxPjOTvs2YcBjiQ0/TLgDYHHm7A7uObUQ4MT4vk7rNmHAY4kNP0y4A2Bx5uwO7jm1EOC0+M5O+zZhwGOJDT9MuANgcebsDu45tRDgtPjOTvs2YcBjiQ0/TLgDYHHm7A7uObUQ4LT4zk77NmHAY4kNP0y4A2Bx5uwO7jm1EOC0+M5O+zZhwGOJDT9MuANgcebsDu45tRDgtPjOTvs2YcBjiQ0/TLgDYHHm7A7uObUQ4LT4zk77NmHAY4kNP0y4A2Bx5uwO7jm1EOC0+M5O+zZhwGOJDT9MuANgcebsDu45tRDgtPjOTvs2YcBjiQ0/TLgDYHHm7A7uObUQ4LT4zk77NmHAY4kNP0y4A2Bx5uwO7jm1EOC0+M5O+zZhwGOJDT9MuANgcebsDu45tRDgtPjOTvs2YcBjiQ0/TLgDYHHm7A7uObUQ4LT4zk77NmHAY4kNP0y4A2Bx5uwO7jm1EOC0+M5O+zZhwGOJDT9MuANgcebsDu45tRDgtPjOTvs2YcBjiQ0/TLgDYHHm7A7uObUQ4LT4zk77NmHAY4kNP0y4A2Bx5uwO7jm1EOC0+M5O+zZhwGOJDT9MuANgcebsDu45tRDgtPjOTvs2YcBjiQ0/TLgDYHHm7A7uObUQ4LT4zk77NmHAY4kNP0y4A2Bx5uwO7jm1EOC0+M5O+zZhwGOJDT9MuANgcebsDu45tRDgtPjOTvs2YcBjiQ0/TLgDYHHm7A7uObUQ4LT4zk77NmHAY4kNP0y4A2Bx5uwO7jm1EOC0+M5O+zZhwGOJDT9MuANgcebsDu45tRDgtPjOTvs2YcBjiQ0/TLgDYHHm7A7uObUQ4LT4zk77NmHAY4kNP0y4A2Bx5uwO7jm1EOC0+M5O+zZhwGOJDT9MuANgcebsDu45tRDgtPjOTvs2YcBjiQ0/TLgDYHHm7A7uObUQ4LT4zk77NmHAY4kNP0y4A2Bx5uwO7jm1EOC0+M5O+zZhwGOJDT9MuANgcebsDu45tRDgtPjOTvs2YcBjiQ0/TLgDYHHm7A7uObUQ4LT4zk77NmHAY4kNP0y4A2Bx5uwO7jm1EOC0+M5O+zZhwGOJDT9MuANgcebsDu45tRDgtPjOTvs2YcBjiQ0/TLgDYHHm7A7uObUQ4LT4zk77NmHAY=');
     }
   }, []);
 
   useEffect(() => {
-    if (!user || !accessToken) return;
+    if (!user) return;
 
     const lastSeen = localStorage.getItem('chat_last_seen_timestamp');
     if (lastSeen) {
@@ -50,6 +57,7 @@ export default function ChatWidget() {
   }, [messages, isOpen]);
 
   useEffect(() => {
+    const accessToken = getAccessToken();
     if (!isOpen || !accessToken) return;
 
     loadMessages(1);
@@ -60,9 +68,10 @@ export default function ChatWidget() {
         wsRef.current.disconnect();
       }
     };
-  }, [isOpen, accessToken]);
+  }, [isOpen]);
 
   const loadMessages = async (page: number) => {
+    const accessToken = getAccessToken();
     if (!accessToken) return;
 
     setIsLoading(true);
@@ -87,6 +96,7 @@ export default function ChatWidget() {
   };
 
   const connectWebSocket = () => {
+    const accessToken = getAccessToken();
     if (!accessToken || wsRef.current?.isConnected()) return;
 
     const ws = new ChatWebSocket(accessToken);
