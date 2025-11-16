@@ -1,7 +1,22 @@
 import { ChatPaginationResponse } from './chat-types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8006';
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8006';
+
+const getWsUrl = () => {
+  if (process.env.NEXT_PUBLIC_WS_URL) {
+    return process.env.NEXT_PUBLIC_WS_URL;
+  }
+  
+  if (typeof window !== 'undefined') {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const apiDomain = API_URL.replace('http://', '').replace('https://', '');
+    return `${protocol}//${apiDomain}`;
+  }
+  
+  return 'ws://localhost:8006';
+};
+
+const WS_URL = getWsUrl();
 
 export async function fetchMessages(page: number = 1, token: string): Promise<ChatPaginationResponse> {
   const response = await fetch(`${API_URL}/api/chat/messages/?page=${page}`, {
@@ -38,7 +53,8 @@ export class ChatWebSocket {
       return;
     }
 
-    const wsUrl = `${WS_URL}/ws/chat/?token=${this.token}`;
+    const wsUrl = `${getWsUrl()}/ws/chat/?token=${this.token}`;
+    console.log('Connecting to WebSocket:', wsUrl);
     this.ws = new WebSocket(wsUrl);
 
     this.ws.onopen = () => {
