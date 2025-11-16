@@ -58,10 +58,23 @@ export default function PADashboard() {
         shiftsAPI.listRequests(),
       ]);
       
-      const allSuggestions = suggestionsRes.data;
-      const pendingSuggestions = Array.isArray(allSuggestions) 
-        ? allSuggestions.filter(s => s.status === 'PENDING')
-        : [];
+      console.log('Suggestions API Response:', suggestionsRes.data);
+      
+      let allSuggestions = [];
+      if (Array.isArray(suggestionsRes.data)) {
+        allSuggestions = suggestionsRes.data;
+      } else if (suggestionsRes.data.results && Array.isArray(suggestionsRes.data.results)) {
+        allSuggestions = suggestionsRes.data.results;
+      }
+      
+      console.log('All suggestions:', allSuggestions);
+      console.log('Current user ID:', user?.id);
+      
+      const pendingSuggestions = allSuggestions.filter((s: ShiftSuggestion) => 
+        s.status === 'PENDING' && s.suggested_to === user?.id
+      );
+      
+      console.log('Pending suggestions for this PA:', pendingSuggestions);
       setSuggestions(pendingSuggestions);
       
       const allRequests = requestsRes.data.results || requestsRes.data;
@@ -285,79 +298,96 @@ export default function PADashboard() {
         </div>
 
         <div className="mb-6">
-          <div className="bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-200 rounded-lg p-6">
-            <div className="flex items-center mb-4">
-              <span className="text-2xl mr-2">🔔</span>
+          <div className="bg-white rounded-lg shadow border border-gray-200">
+            <div className="px-6 py-4 border-b border-gray-200">
               <h3 className="text-lg font-semibold text-gray-900">
                 Shift Suggestions ({suggestions.length})
               </h3>
+              <p className="text-sm text-gray-500 mt-1">
+                Shifts suggested by administrators for you to review
+              </p>
             </div>
             
-            {suggestions.length === 0 ? (
-              <div className="bg-white rounded-lg p-6 text-center">
-                <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-                </svg>
-                <p className="mt-2 text-sm text-gray-600">No pending shift suggestions</p>
-                <p className="mt-1 text-xs text-gray-500">Admins can suggest shifts for you to accept or decline</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {suggestions.map((suggestion) => (
-                  <div
-                    key={suggestion.id}
-                    className="bg-white rounded-lg p-4 shadow"
-                  >
-                    <div className="flex justify-between items-start mb-3">
-                      <div>
-                        <p className="text-sm font-semibold text-gray-900">
-                          {parseDate(suggestion.date).toLocaleDateString('en-US', { 
-                            weekday: 'long',
-                            month: 'long',
-                            day: 'numeric',
-                            year: 'numeric'
-                          })}
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          {formatTime12Hour(suggestion.start_time)} - {formatTime12Hour(suggestion.end_time)} 
-                          <span className="text-gray-500"> ({suggestion.duration_hours} hours)</span>
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1">
-                          Suggested by: {suggestion.suggested_by_name}
-                        </p>
-                      </div>
-                    </div>
-                    
-                    {suggestion.message && (
-                      <div className="mb-3 p-2 bg-gray-50 rounded text-sm text-gray-700 italic">
-                        "{suggestion.message}"
-                      </div>
-                    )}
-                    
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={() => handleAcceptSuggestion(suggestion.id)}
-                        disabled={actionLoading === suggestion.id}
-                        className="flex-1 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded hover:bg-green-700 disabled:opacity-50"
-                      >
-                        ✓ Accept
-                      </button>
-                      <button
-                        onClick={() => openDeclineModal(suggestion)}
-                        disabled={actionLoading === suggestion.id}
-                        className="flex-1 px-4 py-2 bg-red-600 text-white text-sm font-medium rounded hover:bg-red-700 disabled:opacity-50"
-                      >
-                        ✗ Decline
-                      </button>
-                    </div>
-                    
-                    <p className="text-xs text-gray-500 mt-2">
-                      Note: Accepting creates a shift request that still needs admin approval
-                    </p>
+            <div className="p-6">
+              {suggestions.length === 0 ? (
+                <div className="text-center py-8">
+                  <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
+                    <svg className="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
                   </div>
-                ))}
-              </div>
-            )}
+                  <p className="text-sm font-medium text-gray-900">No pending suggestions</p>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Administrators can suggest shifts for you to accept or decline
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {suggestions.map((suggestion) => (
+                    <div
+                      key={suggestion.id}
+                      className="border border-gray-200 rounded-lg p-5 hover:shadow-md transition-shadow bg-white"
+                    >
+                      <div className="flex justify-between items-start mb-4">
+                        <div className="flex-1">
+                          <p className="text-base font-semibold text-gray-900">
+                            {parseDate(suggestion.date).toLocaleDateString('en-US', { 
+                              weekday: 'long',
+                              month: 'long',
+                              day: 'numeric',
+                              year: 'numeric'
+                            })}
+                          </p>
+                          <p className="text-sm text-gray-600 mt-1">
+                            {formatTime12Hour(suggestion.start_time)} - {formatTime12Hour(suggestion.end_time)}
+                            <span className="text-gray-400 ml-2">•</span>
+                            <span className="ml-2">{suggestion.duration_hours} hours</span>
+                          </p>
+                          <p className="text-xs text-gray-500 mt-2">
+                            Suggested by {suggestion.suggested_by_name}
+                          </p>
+                        </div>
+                        <div className="ml-4">
+                          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            Pending Review
+                          </span>
+                        </div>
+                      </div>
+                      
+                      {suggestion.message && (
+                        <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-md">
+                          <p className="text-sm text-gray-700 italic">
+                            "{suggestion.message}"
+                          </p>
+                        </div>
+                      )}
+                      
+                      <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+                        <p className="text-xs text-gray-500">
+                          Accepting creates a shift request pending admin approval
+                        </p>
+                        <div className="flex space-x-3">
+                          <button
+                            onClick={() => openDeclineModal(suggestion)}
+                            disabled={actionLoading === suggestion.id}
+                            className="px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-md hover:bg-gray-50 disabled:opacity-50 transition"
+                          >
+                            Decline
+                          </button>
+                          <button
+                            onClick={() => handleAcceptSuggestion(suggestion.id)}
+                            disabled={actionLoading === suggestion.id}
+                            className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 disabled:opacity-50 transition"
+                          >
+                            {actionLoading === suggestion.id ? 'Processing...' : 'Accept'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
