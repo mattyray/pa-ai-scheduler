@@ -12,4 +12,6 @@ urlpatterns = [
     path('api/schedule-periods/', include('apps.schedules.urls')),
     path('api/shifts/', include('apps.shifts.urls')),
     path('api/', include('apps.schedules.urls')),
+    path('api/chat/', include('apps.chat.urls')),
+
 ]
