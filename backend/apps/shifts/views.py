@@ -161,6 +161,7 @@ class ShiftRequestViewSet(viewsets.ModelViewSet):
         
         return Response(ShiftRequestSerializer(shift_request).data)
     
+
     @action(detail=True, methods=['patch'])
     def edit(self, request, pk=None):
         if request.user.role != 'ADMIN':
@@ -182,9 +183,15 @@ class ShiftRequestViewSet(viewsets.ModelViewSet):
         if isinstance(new_date, str):
             new_date = datetime.strptime(new_date, '%Y-%m-%d').date()
         if isinstance(new_start_time, str):
-            new_start_time = datetime.strptime(new_start_time, '%H:%M').time()
+            if len(new_start_time) > 5:
+                new_start_time = datetime.strptime(new_start_time, '%H:%M:%S').time()
+            else:
+                new_start_time = datetime.strptime(new_start_time, '%H:%M').time()
         if isinstance(new_end_time, str):
-            new_end_time = datetime.strptime(new_end_time, '%H:%M').time()
+            if len(new_end_time) > 5:
+                new_end_time = datetime.strptime(new_end_time, '%H:%M:%S').time()
+            else:
+                new_end_time = datetime.strptime(new_end_time, '%H:%M').time()
         
         has_conflict, conflicting_shift = check_time_conflict(
             new_date,
@@ -219,6 +226,7 @@ class ShiftRequestViewSet(viewsets.ModelViewSet):
         send_shift_edited_notification.delay(shift_request.id, old_date, old_start_time, old_end_time)
         
         return Response(ShiftRequestSerializer(shift_request).data)
+
     
     @action(detail=True, methods=['post'])
     def cancel(self, request, pk=None):
