@@ -38,6 +38,8 @@ INSTALLED_APPS = [
     'apps.shifts',
     'apps.coverage',
     'apps.ai',
+    'apps.chat',
+
 ]
 
 MIDDLEWARE = [
