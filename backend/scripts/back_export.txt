@@ -1,7 +1,7 @@
 # TOTETAXI - BACKEND CODE SNAPSHOT
 # AUTO-GENERATED - CODE FILES ONLY
-# Created: 2025-11-15 14:17:22
-# Total files: 91
+# Created: 2025-11-17 18:03:12
+# Total files: 102
 # 🔒 SECURITY: .env files excluded (contain secrets)
 # 📋 INCLUDES: All Django apps, migrations, configuration
 # Apps: accounts (STAFF), bookings, customers, logistics, payments, services
@@ -116,7 +116,7 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
   CMD curl -f http://localhost:8000/ || exit 1
 
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "config.asgi:application"]
 ```
 
 # ==== docker-compose.yml ====
@@ -245,6 +245,11 @@ primary_region = "ewr"
   auto_start_machines = true
   min_machines_running = 1
   processes = ["app"]
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 200
+    hard_limit = 250
 
   [[http_service.checks]]
     grace_period = "30s"
@@ -465,14 +470,16 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 
 django_asgi_app = get_asgi_application()
 
-# Import after Django is set up
-from apps.schedules.routing import websocket_urlpatterns
+from apps.schedules.routing import websocket_urlpatterns as schedule_urlpatterns
+from apps.chat.routing import websocket_urlpatterns as chat_urlpatterns
+
+all_websocket_patterns = schedule_urlpatterns + chat_urlpatterns
 
 application = ProtocolTypeRouter({
     "http": django_asgi_app,
     "websocket": AuthMiddlewareStack(
         URLRouter(
-            websocket_urlpatterns
+            all_websocket_patterns
         )
     ),
 })
@@ -623,6 +630,7 @@ LOGGING = {
         },
     },
 }
+
 ```
 
 # ==== config/settings.py ====
@@ -668,6 +676,8 @@ INSTALLED_APPS = [
     'apps.shifts',
     'apps.coverage',
     'apps.ai',
+    'apps.chat',
+
 ]
 
 MIDDLEWARE = [
@@ -861,6 +871,8 @@ urlpatterns = [
     path('api/schedule-periods/', include('apps.schedules.urls')),
     path('api/shifts/', include('apps.shifts.urls')),
     path('api/', include('apps.schedules.urls')),
+    path('api/chat/', include('apps.chat.urls')),
+
 ]
 ```
 
@@ -1121,6 +1133,371 @@ from django.test import TestCase
 from django.shortcuts import render
 
 # Create your views here.
+```
+
+# ==== apps/chat/__init__.py ====
+
+```python
+
+```
+
+# ==== apps/chat/admin.py ====
+
+```python
+from django.contrib import admin
+from .models import ChatMessage
+
+
+@admin.register(ChatMessage)
+class ChatMessageAdmin(admin.ModelAdmin):
+    list_display = ('id', 'user', 'message_preview', 'created_at', 'is_edited')
+    list_filter = ('created_at', 'is_edited', 'user')
+    search_fields = ('user__email', 'user__first_name', 'user__last_name', 'message')
+    date_hierarchy = 'created_at'
+    readonly_fields = ('created_at', 'edited_at')
+    
+    def message_preview(self, obj):
+        return obj.message[:50] + '...' if len(obj.message) > 50 else obj.message
+    message_preview.short_description = 'Message'
+```
+
+# ==== apps/chat/apps.py ====
+
+```python
+from django.apps import AppConfig
+
+
+class ChatConfig(AppConfig):
+    default_auto_field = 'django.db.models.BigAutoField'
+    name = 'apps.chat'
+```
+
+# ==== apps/chat/consumers.py ====
+
+```python
+import json
+import time
+from channels.generic.websocket import AsyncWebsocketConsumer
+from channels.db import database_sync_to_async
+from django.contrib.auth.models import AnonymousUser
+from rest_framework_simplejwt.tokens import AccessToken
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+from apps.users.models import User
+from .models import ChatMessage
+
+
+class GeneralChatConsumer(AsyncWebsocketConsumer):
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.last_message_time = 0
+    
+    async def connect(self):
+        self.room_group_name = 'general_chat'
+        
+        user = await self.get_user_from_token()
+        
+        if user is None or user.is_anonymous:
+            await self.close(code=4001)
+            return
+        
+        self.scope['user'] = user
+        
+        await self.channel_layer.group_add(
+            self.room_group_name,
+            self.channel_name
+        )
+        
+        await self.accept()
+        
+        await self.send(text_data=json.dumps({
+            'type': 'connection.established',
+            'message': 'Connected to general chat',
+            'user': {
+                'id': user.id,
+                'email': user.email,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'role': user.role
+            }
+        }))
+        
+        await self.channel_layer.group_send(
+            self.room_group_name,
+            {
+                'type': 'user_joined',
+                'user': {
+                    'id': user.id,
+                    'email': user.email,
+                    'first_name': user.first_name,
+                    'last_name': user.last_name
+                }
+            }
+        )
+    
+    async def disconnect(self, close_code):
+        if hasattr(self, 'scope') and 'user' in self.scope:
+            user = self.scope['user']
+            await self.channel_layer.group_send(
+                self.room_group_name,
+                {
+                    'type': 'user_left',
+                    'user': {
+                        'id': user.id,
+                        'email': user.email,
+                        'first_name': user.first_name,
+                        'last_name': user.last_name
+                    }
+                }
+            )
+        
+        await self.channel_layer.group_discard(
+            self.room_group_name,
+            self.channel_name
+        )
+    
+    async def receive(self, text_data):
+        try:
+            data = json.loads(text_data)
+            message_type = data.get('type')
+            
+            if message_type == 'ping':
+                await self.send(text_data=json.dumps({
+                    'type': 'pong',
+                    'timestamp': data.get('timestamp')
+                }))
+            
+            elif message_type == 'chat.message':
+                current_time = time.time()
+                if current_time - self.last_message_time < 1.0:
+                    await self.send(text_data=json.dumps({
+                        'type': 'error',
+                        'message': 'Rate limit exceeded. Please wait before sending another message.'
+                    }))
+                    return
+                
+                self.last_message_time = current_time
+                
+                message_text = data.get('message', '').strip()
+                if message_text:
+                    if len(message_text) > 1000:
+                        await self.send(text_data=json.dumps({
+                            'type': 'error',
+                            'message': 'Message exceeds 1000 character limit.'
+                        }))
+                        return
+                    
+                    chat_message = await self.save_message(message_text)
+                    
+                    await self.channel_layer.group_send(
+                        self.room_group_name,
+                        {
+                            'type': 'message_new',
+                            'message': {
+                                'id': chat_message.id,
+                                'user': {
+                                    'id': chat_message.user.id,
+                                    'email': chat_message.user.email,
+                                    'first_name': chat_message.user.first_name,
+                                    'last_name': chat_message.user.last_name,
+                                    'role': chat_message.user.role
+                                },
+                                'message': chat_message.message,
+                                'created_at': chat_message.created_at.isoformat(),
+                                'is_edited': chat_message.is_edited
+                            }
+                        }
+                    )
+        
+        except json.JSONDecodeError:
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'message': 'Invalid JSON'
+            }))
+        except Exception as e:
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'message': str(e)
+            }))
+    
+    async def message_new(self, event):
+        await self.send(text_data=json.dumps({
+            'type': 'message.new',
+            'message': event['message']
+        }))
+    
+    async def user_joined(self, event):
+        await self.send(text_data=json.dumps({
+            'type': 'user.joined',
+            'user': event['user']
+        }))
+    
+    async def user_left(self, event):
+        await self.send(text_data=json.dumps({
+            'type': 'user.left',
+            'user': event['user']
+        }))
+    
+    @database_sync_to_async
+    def get_user_from_token(self):
+        try:
+            query_string = self.scope.get('query_string', b'').decode()
+            params = dict(param.split('=') for param in query_string.split('&') if '=' in param)
+            token = params.get('token')
+            
+            if not token:
+                return None
+            
+            access_token = AccessToken(token)
+            user_id = access_token['user_id']
+            return User.objects.get(id=user_id)
+        
+        except (InvalidToken, TokenError, User.DoesNotExist, ValueError):
+            return None
+    
+    @database_sync_to_async
+    def save_message(self, message_text):
+        return ChatMessage.objects.create(
+            user=self.scope['user'],
+            message=message_text
+        )
+```
+
+# ==== apps/chat/migrations/0001_initial.py ====
+
+```python
+# Generated by Django 5.2.7 on 2025-11-16 20:39
+
+import django.db.models.deletion
+from django.conf import settings
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+
+    initial = True
+
+    dependencies = [
+        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
+    ]
+
+    operations = [
+        migrations.CreateModel(
+            name='ChatMessage',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('message', models.TextField(max_length=1000)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('edited_at', models.DateTimeField(blank=True, null=True)),
+                ('is_edited', models.BooleanField(default=False)),
+                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='chat_messages', to=settings.AUTH_USER_MODEL)),
+            ],
+            options={
+                'ordering': ['-created_at'],
+                'indexes': [models.Index(fields=['-created_at'], name='chat_chatme_created_7d7df7_idx')],
+            },
+        ),
+    ]
+```
+
+# ==== apps/chat/migrations/__init__.py ====
+
+```python
+
+```
+
+# ==== apps/chat/models.py ====
+
+```python
+from django.db import models
+from django.conf import settings
+
+
+class ChatMessage(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='chat_messages'
+    )
+    message = models.TextField(max_length=1000)
+    created_at = models.DateTimeField(auto_now_add=True)
+    edited_at = models.DateTimeField(null=True, blank=True)
+    is_edited = models.BooleanField(default=False)
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['-created_at']),
+        ]
+    
+    def __str__(self):
+        return f'{self.user.email} - {self.created_at.strftime("%Y-%m-%d %H:%M")}'
+```
+
+# ==== apps/chat/routing.py ====
+
+```python
+from django.urls import re_path
+from . import consumers
+
+websocket_urlpatterns = [
+    re_path(r'ws/chat/$', consumers.GeneralChatConsumer.as_asgi()),
+]
+```
+
+# ==== apps/chat/serializers.py ====
+
+```python
+from rest_framework import serializers
+from .models import ChatMessage
+from apps.users.serializers import UserSerializer
+
+
+class ChatMessageSerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True)
+    
+    class Meta:
+        model = ChatMessage
+        fields = ['id', 'user', 'message', 'created_at', 'is_edited', 'edited_at']
+        read_only_fields = ['id', 'user', 'created_at', 'is_edited', 'edited_at']
+```
+
+# ==== apps/chat/urls.py ====
+
+```python
+from django.urls import path
+from .views import MessageListView
+
+app_name = 'chat'
+
+urlpatterns = [
+    path('messages/', MessageListView.as_view(), name='message-list'),
+]
+```
+
+# ==== apps/chat/views.py ====
+
+```python
+from rest_framework import generics
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.pagination import PageNumberPagination
+from .models import ChatMessage
+from .serializers import ChatMessageSerializer
+
+
+class ChatMessagePagination(PageNumberPagination):
+    page_size = 50
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+
+class MessageListView(generics.ListAPIView):
+    serializer_class = ChatMessageSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = ChatMessagePagination
+    
+    def get_queryset(self):
+        return ChatMessage.objects.select_related('user').all()
 ```
 
 # ==== apps/coverage/__init__.py ====
@@ -4507,6 +4884,7 @@ class ShiftRequestViewSet(viewsets.ModelViewSet):
         
         return Response(ShiftRequestSerializer(shift_request).data)
     
+
     @action(detail=True, methods=['patch'])
     def edit(self, request, pk=None):
         if request.user.role != 'ADMIN':
@@ -4528,9 +4906,15 @@ class ShiftRequestViewSet(viewsets.ModelViewSet):
         if isinstance(new_date, str):
             new_date = datetime.strptime(new_date, '%Y-%m-%d').date()
         if isinstance(new_start_time, str):
-            new_start_time = datetime.strptime(new_start_time, '%H:%M').time()
+            if len(new_start_time) > 5:
+                new_start_time = datetime.strptime(new_start_time, '%H:%M:%S').time()
+            else:
+                new_start_time = datetime.strptime(new_start_time, '%H:%M').time()
         if isinstance(new_end_time, str):
-            new_end_time = datetime.strptime(new_end_time, '%H:%M').time()
+            if len(new_end_time) > 5:
+                new_end_time = datetime.strptime(new_end_time, '%H:%M:%S').time()
+            else:
+                new_end_time = datetime.strptime(new_end_time, '%H:%M').time()
         
         has_conflict, conflicting_shift = check_time_conflict(
             new_date,
@@ -4565,6 +4949,7 @@ class ShiftRequestViewSet(viewsets.ModelViewSet):
         send_shift_edited_notification.delay(shift_request.id, old_date, old_start_time, old_end_time)
         
         return Response(ShiftRequestSerializer(shift_request).data)
+
     
     @action(detail=True, methods=['post'])
     def cancel(self, request, pk=None):

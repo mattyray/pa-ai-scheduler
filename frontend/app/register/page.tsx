@@ -87,30 +87,49 @@ export default function RegisterPage() {
   if (success) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-md w-full space-y-8">
-          <div className="rounded-md bg-green-50 p-4">
-            <div className="flex">
-              <div className="flex-shrink-0">
-                <svg className="h-5 w-5 text-green-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+        <div className="max-w-2xl w-full">
+          <div className="bg-white rounded-lg shadow-xl p-8 sm:p-12">
+            <div className="text-center">
+              <div className="mx-auto flex items-center justify-center h-20 w-20 rounded-full bg-green-100 mb-6">
+                <svg className="h-12 w-12 text-green-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
               </div>
-              <div className="ml-3">
-                <h3 className="text-sm font-medium text-green-800">
-                  Registration successful!
-                </h3>
-                <div className="mt-2 text-sm text-green-700">
-                  <p>Please check your email to verify your account.</p>
-                </div>
-                <div className="mt-4">
-                  <Link
-                    href="/login"
-                    className="text-sm font-medium text-green-800 hover:text-green-600"
-                  >
-                    Go to login →
-                  </Link>
-                </div>
+              
+              <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-4">
+                Registration Successful!
+              </h2>
+              
+              <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6 mb-8">
+                <p className="text-xl sm:text-2xl font-semibold text-blue-900 mb-3">
+                  Check Your Email to Verify Your Account
+                </p>
+                <p className="text-base sm:text-lg text-blue-800">
+                  We sent a verification link to <span className="font-semibold">{formData.email}</span>
+                </p>
               </div>
+              
+              <div className="space-y-4 text-left bg-gray-50 rounded-lg p-6 mb-8">
+                <h3 className="font-semibold text-lg text-gray-900 mb-3">Next Steps:</h3>
+                <ol className="list-decimal list-inside space-y-2 text-gray-700">
+                  <li className="text-base sm:text-lg">Check your email inbox (and spam folder)</li>
+                  <li className="text-base sm:text-lg">Click the verification link in the email</li>
+                  <li className="text-base sm:text-lg">Return here and log in with your credentials</li>
+                </ol>
+              </div>
+              
+              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <Link
+                  href="/login"
+                  className="inline-flex justify-center items-center px-8 py-4 border border-transparent text-lg font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                >
+                  Go to Login Page
+                </Link>
+              </div>
+              
+              <p className="mt-6 text-sm text-gray-500">
+                Didn't receive the email? Check your spam folder or contact support.
+              </p>
             </div>
           </div>
         </div>
@@ -163,11 +182,11 @@ export default function RegisterPage() {
                 id="first_name"
                 name="first_name"
                 type="text"
+                autoComplete="given-name"
                 required
                 value={formData.first_name}
                 onChange={handleChange}
                 className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                placeholder="John"
               />
             </div>
 
@@ -179,11 +198,11 @@ export default function RegisterPage() {
                 id="last_name"
                 name="last_name"
                 type="text"
+                autoComplete="family-name"
                 required
                 value={formData.last_name}
                 onChange={handleChange}
                 className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                placeholder="Doe"
               />
             </div>
 
@@ -195,14 +214,13 @@ export default function RegisterPage() {
                 id="phone_number"
                 name="phone_number"
                 type="tel"
+                autoComplete="tel"
                 required
                 value={formData.phone_number}
                 onChange={handleChange}
-                maxLength={14}
                 className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                placeholder="(555) 123-4567"
+                placeholder="(555) 555-5555"
               />
-              <p className="mt-1 text-xs text-gray-500">Format: (555) 123-4567</p>
             </div>
 
             <div>
@@ -218,7 +236,6 @@ export default function RegisterPage() {
                 value={formData.password}
                 onChange={handleChange}
                 className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                placeholder="••••••••"
               />
             </div>
 
@@ -235,7 +252,6 @@ export default function RegisterPage() {
                 value={formData.password_confirm}
                 onChange={handleChange}
                 className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                placeholder="••••••••"
               />
             </div>
           </div>
@@ -246,7 +262,7 @@ export default function RegisterPage() {
               disabled={loading}
               className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? 'Creating account...' : 'Create account'}
+              {loading ? 'Creating account...' : 'Create Account'}
             </button>
           </div>
 

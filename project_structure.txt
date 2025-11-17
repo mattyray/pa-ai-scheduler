@@ -10,6 +10,19 @@
 │   │   │   ├── models.py
 │   │   │   ├── tests.py
 │   │   │   └── views.py
+│   │   ├── chat
+│   │   │   ├── migrations
+│   │   │   │   ├── __init__.py
+│   │   │   │   └── 0001_initial.py
+│   │   │   ├── __init__.py
+│   │   │   ├── admin.py
+│   │   │   ├── apps.py
+│   │   │   ├── consumers.py
+│   │   │   ├── models.py
+│   │   │   ├── routing.py
+│   │   │   ├── serializers.py
+│   │   │   ├── urls.py
+│   │   │   └── views.py
 │   │   ├── schedules
 │   │   │   ├── management
 │   │   │   │   ├── commands
@@ -137,6 +150,8 @@
 │   │   │   │   ├── utils.ts
 │   │   │   │   └── WeekView.tsx
 │   │   │   ├── CancelShiftModal.tsx
+│   │   │   ├── ChatMessage.tsx
+│   │   │   ├── ChatWidget.tsx
 │   │   │   ├── CreateShiftModal.tsx
 │   │   │   └── EditShiftModal.tsx
 │   │   ├── dashboard
@@ -151,13 +166,16 @@
 │   │   │   └── page.tsx
 │   │   ├── schedule
 │   │   │   └── page.tsx
-│   │   ├── favicon.ico
+│   │   ├── verify-email
+│   │   │   └── page.tsx
 │   │   ├── globals.css
 │   │   ├── layout.tsx
 │   │   └── page.tsx
 │   ├── lib
 │   │   ├── api.ts
 │   │   ├── auth-context.tsx
+│   │   ├── chat-api.ts
+│   │   ├── chat-types.ts
 │   │   ├── dashboard-api.ts
 │   │   ├── pa-colors.ts
 │   │   ├── pas-api.ts
@@ -165,10 +183,18 @@
 │   │   ├── shifts-api.ts
 │   │   └── suggestions-api.ts
 │   ├── public
+│   │   ├── apple-touch-icon.png
+│   │   ├── favicon-96x96.png
+│   │   ├── favicon.ico
+│   │   ├── favicon.svg
 │   │   ├── file.svg
 │   │   ├── globe.svg
+│   │   ├── manifest.json
 │   │   ├── next.svg
+│   │   ├── site.webmanifest
 │   │   ├── vercel.svg
+│   │   ├── web-app-manifest-192x192.png
+│   │   ├── web-app-manifest-512x512.png
 │   │   └── window.svg
 │   ├── scripts
 │   │   ├── front_export.py
@@ -186,4 +212,4 @@
 ├── README.md
 └── test_websocket.py
 
-39 directories, 148 files
+42 directories, 171 files
