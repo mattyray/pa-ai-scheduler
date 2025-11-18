@@ -36,16 +36,30 @@ CSRF_TRUSTED_ORIGINS = [
 if os.environ.get('CSRF_TRUSTED_ORIGINS'):
     CSRF_TRUSTED_ORIGINS.extend(os.environ.get('CSRF_TRUSTED_ORIGINS').split(','))
 
-DATABASES['default'] = dj_database_url.config(
-    default=os.environ.get('DATABASE_URL'),
-    conn_max_age=600,
-    conn_health_checks=True,
-)
+DATABASES = {
+    'default': dj_database_url.config(
+        default=os.environ.get('DATABASE_URL'),
+        conn_max_age=600,
+        conn_health_checks=True,
+    )
+}
+
+DATABASES['default']['OPTIONS'] = {
+    'connect_timeout': 10,
+    'options': '-c statement_timeout=30000',
+    'keepalives': 1,
+    'keepalives_idle': 30,
+    'keepalives_interval': 10,
+    'keepalives_count': 5,
+}
 
 REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
 
 CELERY_BROKER_URL = REDIS_URL
 CELERY_RESULT_BACKEND = REDIS_URL
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+CELERY_BROKER_CONNECTION_RETRY = True
+CELERY_BROKER_CONNECTION_MAX_RETRIES = 10
 
 CHANNEL_LAYERS = {
     'default': {
@@ -102,6 +116,10 @@ LOGGING = {
             'level': 'INFO',
             'propagate': False,
         },
+        'django.db.backends': {
+            'handlers': ['console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
     },
 }
-
