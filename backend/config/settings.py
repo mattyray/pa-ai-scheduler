@@ -170,6 +170,8 @@ EMAIL_USE_TLS = True
 EMAIL_HOST_USER = os.environ.get('AWS_ACCESS_KEY_ID', '')
 EMAIL_HOST_PASSWORD = os.environ.get('AWS_SECRET_ACCESS_KEY', '')
 DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'noreply@example.com')
+AWS_SNS_REGION = 'us-east-2'
+
 
 # OpenAI
 OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
