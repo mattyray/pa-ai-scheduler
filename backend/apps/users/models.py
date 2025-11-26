@@ -1,7 +1,9 @@
+# apps/users/models.py
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils import timezone
 import uuid
+import re
 from datetime import timedelta
 
 
@@ -11,13 +13,25 @@ class User(AbstractUser):
     Email is the primary identifier instead of username.
     """
     email = models.EmailField(unique=True, db_index=True)
-    phone_number = models.CharField(max_length=20)
+    phone_number = models.CharField(max_length=20, blank=True, default='')
     
     ROLE_CHOICES = [
         ('ADMIN', 'Admin'),
         ('PA', 'Personal Assistant'),
     ]
     role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='PA')
+    
+    NOTIFICATION_CHOICES = [
+        ('both', 'Email and SMS'),
+        ('email', 'Email only'),
+        ('sms', 'SMS only'),
+        ('none', 'None'),
+    ]
+    notification_preference = models.CharField(
+        max_length=10,
+        choices=NOTIFICATION_CHOICES,
+        default='both'
+    )
     
     is_email_verified = models.BooleanField(default=False)
     
@@ -32,11 +46,29 @@ class User(AbstractUser):
     def __str__(self):
         return f"{self.email} ({self.get_role_display()})"
     
+    def normalize_phone_number(self, phone):
+        """Normalize phone number to E.164 format (+15551234567)"""
+        if not phone:
+            return ''
+        
+        digits = re.sub(r'\D', '', phone)
+        
+        if len(digits) == 10:
+            return f'+1{digits}'
+        elif len(digits) == 11 and digits.startswith('1'):
+            return f'+{digits}'
+        elif phone.startswith('+') and len(digits) >= 10:
+            return f'+{digits}'
+        
+        return phone
+    
     def save(self, *args, **kwargs):
         if self.email:
             self.email = self.email.lower()
         if not self.username:
             self.username = self.email.split('@')[0]
+        if self.phone_number:
+            self.phone_number = self.normalize_phone_number(self.phone_number)
         super().save(*args, **kwargs)
 
 
